@@ -43,6 +43,7 @@ const State = {
   secOver: "1Y",
   wlOver: "1Y",
   active: "stocks",
+  cursor: -1,                 // keyboard row cursor in stocks/watchlist tables
   detailTicker: null,
   detailCache: {},            // ticker -> profile (also mirrored to localStorage)
   watchlist: new Set(),       // starred tickers
@@ -197,6 +198,7 @@ function renderStocks() {
 
   const tb = $("rows");
   tb.innerHTML = "";
+  State.cursor = -1;
   const frag = document.createDocumentFragment();
   rows.forEach((r) => frag.appendChild(makeRow(r, over)));
   tb.appendChild(frag);
@@ -252,6 +254,7 @@ function renderWatchlist() {
 
   const tb = $("wlRows");
   tb.innerHTML = "";
+  State.cursor = -1;
   const frag = document.createDocumentFragment();
   rows.forEach((r) => frag.appendChild(makeRow(r, over)));
   tb.appendChild(frag);
@@ -402,8 +405,148 @@ async function openDetail(ticker) {
   }
 }
 
+// ---------------- Command palette (Cmd/Ctrl-K, /) ----------------
+// Fast jump to any ticker's pitchbook, plus a few nav actions. Named `Cmd*`
+// so nothing collides with the helpers company.js declares in the shared scope.
+const Cmd = { open: false, results: [], sel: 0 };
+
+function paletteActions() {
+  return [
+    { type: "nav", label: "Go to Individual stocks", hint: "tab", run: () => switchTab("stocks") },
+    { type: "nav", label: "Go to Watchlist", hint: "tab", run: () => switchTab("watchlist") },
+    { type: "nav", label: "Go to Sectors", hint: "tab", run: () => switchTab("sectors") },
+    { type: "nav", label: "Refresh data (re-pull prices)", hint: "action", run: () => $("refresh").click() },
+  ];
+}
+
+function scoreTicker(r, q) {
+  const t = r.ticker.toLowerCase(), n = (r.name || "").toLowerCase();
+  if (t === q) return 0;
+  if (t.startsWith(q)) return 1;
+  if (n.startsWith(q)) return 2;
+  if (t.includes(q)) return 3;
+  if (n.includes(q)) return 4;
+  return 99;
+}
+
+function computePaletteResults(query) {
+  const q = (query || "").trim().toLowerCase();
+  const rows = (State.base && State.base.rows) || [];
+  if (!q) {
+    // Empty query: nav actions, then your watchlist for one-key access.
+    const wl = rows.filter((r) => State.watchlist.has(r.ticker))
+                   .map((r) => ({ type: "ticker", row: r }));
+    return [...paletteActions(), ...wl];
+  }
+  const tickers = rows
+    .map((r) => ({ r, s: scoreTicker(r, q) }))
+    .filter((x) => x.s < 99)
+    .sort((a, b) => a.s - b.s || a.r.ticker.localeCompare(b.r.ticker))
+    .slice(0, 20)
+    .map((x) => ({ type: "ticker", row: x.r }));
+  const navs = paletteActions().filter((a) => a.label.toLowerCase().includes(q));
+  return [...tickers, ...navs];
+}
+
+function renderPalette() {
+  const list = $("cmdkList");
+  const res = Cmd.results;
+  if (!res.length) { list.innerHTML = `<div class="cmdk-empty">No matches.</div>`; return; }
+  list.innerHTML = res.map((it, i) => {
+    const sel = i === Cmd.sel ? " sel" : "";
+    if (it.type === "nav") {
+      return `<div class="cmdk-item nav${sel}" data-i="${i}">` +
+        `<span class="ci-star">→</span><span class="ci-tk"></span>` +
+        `<span class="ci-name">${esc(it.label)}</span>` +
+        `<span class="ci-ret na">${it.hint}</span></div>`;
+    }
+    const r = it.row, on = isWatched(r.ticker);
+    return `<div class="cmdk-item${sel}" data-i="${i}">` +
+      `<span class="ci-star star ${on ? "on" : "off"}" title="Toggle watchlist">${on ? "★" : "☆"}</span>` +
+      `<span class="ci-tk">${r.ticker}</span>` +
+      `<span class="ci-name">${esc(r.name || "")} <span class="ci-sec">${esc(r.sector || "")}</span></span>` +
+      `<span class="ci-ret">${pct(r.returns["1Y"])}</span></div>`;
+  }).join("");
+  list.querySelectorAll(".cmdk-item").forEach((el) => {
+    const i = +el.dataset.i;
+    el.onmouseenter = () => { Cmd.sel = i; highlightPalette(); };
+    el.onclick = (e) => {
+      if (e.target.classList.contains("star")) {
+        const it = Cmd.results[i];
+        if (it && it.type === "ticker") { toggleWatch(it.row.ticker); renderPalette(); }
+        return;
+      }
+      Cmd.sel = i; runPalette();
+    };
+  });
+}
+
+function highlightPalette() {
+  const items = $("cmdkList").querySelectorAll(".cmdk-item");
+  items.forEach((el, i) => el.classList.toggle("sel", i === Cmd.sel));
+  if (items[Cmd.sel]) items[Cmd.sel].scrollIntoView({ block: "nearest" });
+}
+
+function runPalette() {
+  const it = Cmd.results[Cmd.sel];
+  if (!it) return;
+  closePalette();
+  if (it.type === "nav") it.run();
+  else openDetail(it.row.ticker);
+}
+
+function openPalette() {
+  Cmd.open = true;
+  Cmd.sel = 0;
+  $("cmdk").classList.remove("hidden");
+  const inp = $("cmdkInput");
+  inp.value = "";
+  Cmd.results = computePaletteResults("");
+  renderPalette();
+  inp.focus();
+}
+
+function closePalette() {
+  Cmd.open = false;
+  $("cmdk").classList.add("hidden");
+}
+
+function onPaletteInput() {
+  Cmd.results = computePaletteResults($("cmdkInput").value);
+  Cmd.sel = 0;
+  renderPalette();
+}
+
+function onPaletteKey(e) {
+  const n = Cmd.results.length;
+  if (e.key === "ArrowDown") { e.preventDefault(); Cmd.sel = n ? (Cmd.sel + 1) % n : 0; highlightPalette(); }
+  else if (e.key === "ArrowUp") { e.preventDefault(); Cmd.sel = n ? (Cmd.sel - 1 + n) % n : 0; highlightPalette(); }
+  else if (e.key === "Enter") { e.preventDefault(); runPalette(); }
+  else if (e.key === "Escape") { e.preventDefault(); closePalette(); }
+}
+
+// ---------------- Keyboard row cursor (stocks / watchlist tables) ----------------
+function cursorRows() {
+  const tb = State.active === "watchlist" ? $("wlRows") : $("rows");
+  return Array.from(tb.querySelectorAll("tr"));
+}
+function clearCursor() {
+  document.querySelectorAll("tr.rowsel").forEach((el) => el.classList.remove("rowsel"));
+  State.cursor = -1;
+}
+function moveCursor(delta) {
+  const rows = cursorRows();
+  if (!rows.length) return;
+  let i = State.cursor < 0 ? (delta > 0 ? 0 : rows.length - 1) : State.cursor + delta;
+  i = Math.max(0, Math.min(rows.length - 1, i));
+  State.cursor = i;
+  rows.forEach((r, j) => r.classList.toggle("rowsel", j === i));
+  rows[i].scrollIntoView({ block: "nearest" });
+}
+
 // ---------------- Tabs ----------------
 function switchTab(name) {
+  clearCursor();
   State.active = name;
   ["stocks", "watchlist", "sectors", "detail"].forEach((v) => {
     $("view-" + v).classList.toggle("hidden", v !== name);
@@ -485,6 +628,39 @@ async function boot() {
     switchTab("stocks");
   };
   $("detailTab").onclick = () => { if (State.detailTicker) switchTab("detail"); };
+
+  // Command palette + global keyboard.
+  $("cmdkBtn").querySelector(".cmdk-kbd").textContent =
+    /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘K" : "Ctrl K";
+  $("cmdkBtn").addEventListener("click", openPalette);
+  $("cmdkInput").addEventListener("input", onPaletteInput);
+  $("cmdkInput").addEventListener("keydown", onPaletteKey);
+  $("cmdk").addEventListener("mousedown", (e) => { if (e.target.id === "cmdk") closePalette(); });
+
+  const isTyping = (el) => el && (el.tagName === "INPUT" || el.tagName === "SELECT" ||
+    el.tagName === "TEXTAREA" || el.isContentEditable);
+  document.addEventListener("keydown", (e) => {
+    if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) {
+      e.preventDefault(); Cmd.open ? closePalette() : openPalette(); return;
+    }
+    if (e.key === "Escape" && Cmd.open) { closePalette(); return; }
+    if (Cmd.open) return;                       // palette input handles its own keys
+    const typing = isTyping(document.activeElement);
+    if (e.key === "/" && !typing) { e.preventDefault(); openPalette(); return; }
+    if (e.key === "Escape" && !typing && State.active === "detail") { switchTab("stocks"); return; }
+    // Arrow / Enter / w row cursor on the stocks + watchlist tables.
+    if (!typing && (State.active === "stocks" || State.active === "watchlist")) {
+      if (e.key === "ArrowDown") { e.preventDefault(); moveCursor(1); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); moveCursor(-1); }
+      else if (e.key === "Enter") {
+        const r = cursorRows()[State.cursor];
+        if (r) openDetail(r.dataset.tk);
+      } else if (e.key === "w" || e.key === "W") {
+        const r = cursorRows()[State.cursor];
+        if (r) { e.preventDefault(); toggleWatch(r.dataset.tk); }
+      }
+    }
+  });
 
   // Theme.
   $("theme").addEventListener("change", () => {
