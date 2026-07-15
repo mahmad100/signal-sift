@@ -4,5 +4,6 @@ __pycache__/
 data/*.json
 data/*.log
 !data/.gitkeep
+!data/precomputed_screen.json
 .env
 .vercel

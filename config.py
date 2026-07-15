@@ -3,16 +3,27 @@ import os
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# On Vercel (and other serverless hosts) the deployment filesystem is read-only
-# except for /tmp, so the on-disk cache must live there. Locally it stays under
-# the project's data/ folder. Override explicitly with SIGNALSIFT_DATA_DIR.
+# True on Vercel / AWS Lambda style serverless hosts (read-only fs, short timeouts).
+SERVERLESS = bool(os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"))
+
+# On serverless the deployment filesystem is read-only except /tmp, so the on-disk
+# cache must live there. Locally it stays under the project's data/ folder.
+# Override explicitly with SIGNALSIFT_DATA_DIR.
 if os.environ.get("SIGNALSIFT_DATA_DIR"):
     DATA_DIR = os.environ["SIGNALSIFT_DATA_DIR"]
-elif os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
+elif SERVERLESS:
     DATA_DIR = "/tmp/signalsift-data"
 else:
     DATA_DIR = os.path.join(BASE_DIR, "data")
 os.makedirs(DATA_DIR, exist_ok=True)
+
+# Committed, precomputed screen (refreshed by the GitHub Action). On serverless we
+# serve this instead of doing the slow 500-ticker live pull, so cold starts are fast.
+PRECOMPUTED_SCREEN = os.path.join(BASE_DIR, "data", "precomputed_screen.json")
+
+# Whether this process may run the slow live screen pull. Off on serverless so a
+# cold start (or a Refresh) never risks the function timeout — it serves precompute.
+LIVE_SCREEN = not SERVERLESS
 
 # SEC requires a descriptive User-Agent with contact info. Override via env var.
 SEC_USER_AGENT = os.environ.get(

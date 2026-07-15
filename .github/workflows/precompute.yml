@@ -1,0 +1,47 @@
+name: Precompute screen
+
+# Runs the full S&P 500 screen and commits data/precomputed_screen.json.
+# The push redeploys Vercel with fresh data, so the serverless app never has to
+# do the slow live pull itself.
+
+on:
+  schedule:
+    - cron: "0 22 * * 1-5"   # ~after US market close, weekdays (22:00 UTC)
+    - cron: "0 12 * * 1-5"   # mid-morning refresh, weekdays (12:00 UTC)
+  workflow_dispatch:          # allow manual runs from the Actions tab
+
+permissions:
+  contents: write
+
+concurrency:
+  group: precompute
+  cancel-in-progress: false
+
+jobs:
+  precompute:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Build screen
+        run: python scripts/precompute.py
+
+      - name: Commit if changed
+        run: |
+          git config user.name "signal-sift-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/precomputed_screen.json
+          if git diff --cached --quiet; then
+            echo "No change in screen data."
+          else
+            git commit -m "chore: refresh precomputed screen"
+            git push
+          fi

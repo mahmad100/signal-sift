@@ -1,5 +1,7 @@
 """Core screen: compute trailing returns for the universe and flag stalled names."""
 import datetime as dt
+import json
+import os
 
 import config
 from . import cache, prices, universe
@@ -14,12 +16,36 @@ def _benchmark_returns(closes):
     return {k: None for k in config.WINDOWS}
 
 
+def _load_precomputed():
+    """Load the committed precomputed screen (refreshed by the GitHub Action)."""
+    path = config.PRECOMPUTED_SCREEN
+    if not os.path.exists(path):
+        return None
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            return json.load(fh)
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
 def run_screen(force: bool = False) -> dict:
-    """Compute returns for every constituent. Returns a cached dict payload."""
+    """Return the screen payload.
+
+    Precedence: fresh short-lived cache → (on serverless) committed precompute →
+    live pull. On serverless we never run the slow 500-ticker pull, so cold starts
+    and Refresh both serve the precomputed file the GitHub Action keeps fresh.
+    """
     if not force:
         cached = cache.get(_CACHE_KEY, config.SCREEN_TTL)
         if cached:
             return cached
+
+    if not config.LIVE_SCREEN:
+        pre = _load_precomputed()
+        if pre:
+            cache.set(_CACHE_KEY, pre)
+            return pre
+        # No precompute yet — fall through and try a live pull as a last resort.
 
     consts = universe.get_constituents()
     tickers = [c["ticker"] for c in consts]

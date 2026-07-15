@@ -107,14 +107,19 @@ serverless function, `vercel.json` routes all traffic to it, and the on-disk
 cache automatically moves to `/tmp` on serverless (see `config.py`). Import the
 repo in Vercel and it builds from `requirements.txt` — no extra setup.
 
-> **One caveat that matters:** the first `/api/screen` call pulls ~5 years of
-> prices for all 500 names (~25s) and each serverless cold start starts with an
-> empty `/tmp` cache, so it can brush against Vercel's function time limit
-> (`maxDuration` is set to 60s). It works, but the first load after a cold start
-> is slow and occasionally times out. The clean fix is to **precompute the screen**
-> (a scheduled job / GitHub Action commits the screen JSON) and have the function
-> just serve it — happy to wire that up. Persistent-server hosts (Render, Railway,
-> Fly.io) run the app as-is with no timeout concerns.
+**Precomputed screen (no cold-start timeout).** Building the screen means pulling
+~5 years of prices for all 500 names (~25s) — too slow for a serverless cold
+start. So the slow work runs in CI instead: the **`Precompute screen` GitHub
+Action** (`.github/workflows/precompute.yml`) runs the screen on a schedule and
+commits `data/precomputed_screen.json`. On serverless (`config.LIVE_SCREEN` is
+False) the app **serves that committed file** — both cold starts and the Refresh
+button — so `/api/screen` returns in well under a second and never runs the live
+pull. Each Action commit redeploys Vercel with fresh data. Per-stock detail pages
+stay on-demand (a single ticker is fast). Locally, `LIVE_SCREEN` is True so the
+screener pulls live as usual.
+
+To refresh manually: **Actions tab → Precompute screen → Run workflow**. Schedule
+is weekday mornings and after the US close.
 
 ## Using the dashboard
 
