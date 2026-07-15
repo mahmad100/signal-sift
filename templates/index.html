@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Signal Sift</title>
+  <script>document.documentElement.dataset.theme = localStorage.getItem("ss-theme") || "midnight";</script>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">◑</span>
+      <div>
+        <h1>Signal Sift</h1>
+        <p class="tag">S&amp;P 500 growth radar — who's moving, who's stalled, and why.</p>
+      </div>
+    </div>
+    <div class="topright">
+      <label class="themepick">Theme
+        <select id="theme">
+          <option value="midnight">Midnight</option>
+          <option value="carbon">Carbon</option>
+          <option value="light">Daylight</option>
+          <option value="amber">Amber terminal</option>
+          <option value="ocean">Ocean</option>
+        </select>
+      </label>
+      <button id="refresh" class="ghost" title="Re-pull all prices from Yahoo">↻ Refresh data</button>
+      <div class="meta" id="meta"></div>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab active" data-tab="stocks">Individual stocks</button>
+    <button class="tab" data-tab="watchlist" data-tabbtn="watchlist">★ Watchlist <span class="tabcount" id="wlCount">0</span></button>
+    <button class="tab" data-tab="sectors">Sectors</button>
+    <button class="tab hidden" data-tab="detail" id="detailTab">
+      <span id="detailTabName">Detail</span> <span class="tabx" id="detailClose">✕</span>
+    </button>
+  </nav>
+
+  <main>
+    <!-- ============ STOCKS ============ -->
+    <section id="view-stocks" class="view">
+      <div class="controls">
+        <label>Show
+          <select id="status">
+            <option value="all" selected>All names</option>
+            <option value="growing">Growing only</option>
+            <option value="stalled">Stalled only</option>
+          </select>
+        </label>
+        <label>Growth over
+          <select id="over">
+            <option value="1D">1 day</option><option value="1W">1 week</option>
+            <option value="1M">1 month</option><option value="3M">3 months</option>
+            <option value="6M">6 months</option><option value="9M">9 months</option>
+            <option value="1Y" selected>1 year</option><option value="2Y">2 years</option>
+            <option value="3Y">3 years</option><option value="4Y">4 years</option>
+            <option value="5Y">5 years</option>
+          </select>
+        </label>
+        <label>Sort by
+          <select id="sort">
+            <option value="">Growth window</option>
+            <option value="1D">1D</option><option value="1W">1W</option>
+            <option value="1M">1M</option><option value="3M">3M</option>
+            <option value="6M">6M</option><option value="9M">9M</option>
+            <option value="1Y">1Y</option><option value="2Y">2Y</option>
+            <option value="3Y">3Y</option><option value="4Y">4Y</option>
+            <option value="5Y">5Y</option><option value="stall">Stall score</option>
+          </select>
+        </label>
+        <label>Order
+          <select id="direction">
+            <option value="desc" selected>Best first ▼</option>
+            <option value="asc">Worst first ▲</option>
+          </select>
+        </label>
+        <label>Sector
+          <select id="sector"><option value="">— all —</option></select>
+        </label>
+        <label>Growth line
+          <select id="ceiling">
+            <option value="0.0">0%</option><option value="0.05" selected>+5%</option><option value="0.10">+10%</option>
+          </select>
+        </label>
+        <input id="search" class="search" placeholder="Filter by ticker / name…" autocomplete="off">
+      </div>
+      <div id="status-line" class="status"></div>
+      <div class="tablewrap">
+        <table id="grid"><thead><tr id="headRow"></tr></thead><tbody id="rows"></tbody></table>
+      </div>
+    </section>
+
+    <!-- ============ WATCHLIST ============ -->
+    <section id="view-watchlist" class="view hidden">
+      <div class="controls">
+        <label>Growth over
+          <select id="wlOver">
+            <option value="1D">1 day</option><option value="1W">1 week</option>
+            <option value="1M">1 month</option><option value="3M">3 months</option>
+            <option value="6M">6 months</option><option value="9M">9 months</option>
+            <option value="1Y" selected>1 year</option><option value="2Y">2 years</option>
+            <option value="3Y">3 years</option><option value="4Y">4 years</option>
+            <option value="5Y">5 years</option>
+          </select>
+        </label>
+        <span class="hint">★ any stock in the Individual stocks tab or on its detail page to track it here.</span>
+      </div>
+      <div id="wl-status" class="status"></div>
+      <div id="wlEmpty" class="empty hidden">
+        <div class="empty-star">★</div>
+        <p>Your watchlist is empty.</p>
+        <p class="na">Click the ☆ next to any stock to start tracking it — it stays here across refreshes.</p>
+      </div>
+      <div class="tablewrap"><table id="wlGrid"><thead><tr id="wlHead"></tr></thead><tbody id="wlRows"></tbody></table></div>
+    </section>
+
+    <!-- ============ SECTORS ============ -->
+    <section id="view-sectors" class="view hidden">
+      <div class="controls">
+        <label>Median over
+          <select id="secOver">
+            <option value="1D">1 day</option><option value="1W">1 week</option>
+            <option value="1M">1 month</option><option value="3M">3 months</option>
+            <option value="6M">6 months</option><option value="9M">9 months</option>
+            <option value="1Y" selected>1 year</option><option value="2Y">2 years</option>
+            <option value="3Y">3 years</option><option value="4Y">4 years</option>
+            <option value="5Y">5 years</option>
+          </select>
+        </label>
+        <span class="hint">Click a sector to open it in the Individual stocks tab.</span>
+      </div>
+      <div class="card"><h3>Median return by GICS sector</h3><div id="sectorChart"></div></div>
+      <div class="card"><h3>Sector heatmap — median return across windows</h3>
+        <div class="tablewrap"><div id="sectorHeat"></div></div>
+      </div>
+    </section>
+
+    <!-- ============ DETAIL ============ -->
+    <section id="view-detail" class="view hidden">
+      <div id="detailBody"><p class="loading">Select a stock…</p></div>
+    </section>
+  </main>
+
+  <script src="/static/company.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>
