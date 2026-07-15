@@ -32,6 +32,9 @@ re-rated yet. Signal Sift finds them and points you at the primary sources.
   return?" Weights are a full-market-cap approximation (not float-adjusted).
 - **Jump anywhere**: Ctrl-K / `/` command palette to any ticker, keyboard row
   navigation, and deep links (`#/company/NVDA`, `#/weights`) that survive refresh.
+- **Animated intro** at `/landing`: the ◑ mark spins in and fills to half like a
+  loader, then "Signal Sift" types out — themed to match your chosen palette.
+  (Currently a side page; can be promoted to the front door.)
 - **Flags "stalled" names** — return at or below a growth line you choose (default +5%).
 - **Ranks by stall score** (how many of the 7 windows are stalled) and relative
   under-performance vs. SPY.
@@ -174,7 +177,7 @@ Signal Sift/
 │   ├── company.py          # full pitchbook profile (fundamentals + history + news)
 │   ├── cache.py            # TTL JSON cache under data/
 │   └── app.py              # Flask routes + API
-├── templates/{index.html, company.html}
+├── templates/{index.html, company.html, landing.html}   # landing.html = animated intro (/landing)
 └── static/{styles.css, app.js, company.js}   # app.js = SPA, company.js = shared profile renderer
 ```
 

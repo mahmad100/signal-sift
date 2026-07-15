@@ -18,6 +18,13 @@ def index():
     return render_template("index.html")
 
 
+@app.route("/landing")
+def landing():
+    # Animated intro splash. Non-breaking: the dashboard stays at "/".
+    # To make it the front door later, serve this at "/" and move the app to "/app".
+    return render_template("landing.html")
+
+
 def _ceiling_arg():
     c = request.args.get("ceiling")
     return float(c) if c not in (None, "") else None
