@@ -25,7 +25,7 @@ Signal Sift/
 │   ├── fundamentals.py        # income/cash-flow/balance-sheet (30-day cache)
 │   ├── company.py             # full detail/pitchbook profile (assembles everything)
 │   └── cache.py               # TTL + schema-versioned JSON file cache
-├── templates/{index.html, company.html, landing.html}   # landing = animated intro splash (/landing)
+├── templates/{index.html, company.html}   # index opens with the #ss-intro splash overlay
 ├── static/
 │   ├── styles.css             # themes (CSS vars) + all component styles
 │   ├── company.js             # buildProfileHTML() + all SVG chart helpers (SHARED)

@@ -15,14 +15,9 @@ app = Flask(
 
 @app.route("/")
 def index():
+    # index.html opens with the intro splash overlay (plays on every load), then
+    # reveals the dashboard. See templates/index.html #ss-intro + static/styles.css.
     return render_template("index.html")
-
-
-@app.route("/landing")
-def landing():
-    # Animated intro splash. Non-breaking: the dashboard stays at "/".
-    # To make it the front door later, serve this at "/" and move the app to "/app".
-    return render_template("landing.html")
 
 
 def _ceiling_arg():
