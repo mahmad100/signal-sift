@@ -20,6 +20,7 @@ Signal Sift/
 │   ├── screener.py            # run_screen (live or precompute), filter, sector_stats
 │   ├── edgar.py               # ticker→CIK, recent SEC filings + links
 │   ├── analysts.py            # price targets, ratings, estimates (yfinance)
+│   ├── marketcaps.py          # implied share counts for index weights (30-day cache)
 │   ├── news.py                # recent headlines + naive sentiment tag
 │   ├── fundamentals.py        # income/cash-flow/balance-sheet (30-day cache)
 │   ├── company.py             # full detail/pitchbook profile (assembles everything)
@@ -46,6 +47,12 @@ Signal Sift/
   from the cached universe, then renders with `buildProfileHTML()` from `company.js`.
 - **Sectors:** computed client-side from the base rows (`computeSectors` in `app.js`);
   `/api/sectors` exists too but the SPA doesn't need it.
+- **Weights:** each screen row carries an approximate `market_cap` = implied shares
+  (`marketcaps.get_shares`, cached ~30d as `marketCap ÷ price`) × the current screen price,
+  so caps track price without re-pulling the slow per-name data. The **Weights** tab
+  (`renderWeights` in `app.js`) computes sector/stock index weights and the basket-vs-SPY
+  "replicate the index" math **client-side** from `market_cap`. Weights are a full-market-cap
+  approximation of SPY's float-adjusted methodology (imperfect for dual-class names).
 - **Routing:** the active view is mirrored into `location.hash` (`#/stocks`,
   `#/watchlist`, `#/sectors`, `#/company/<TICKER>`) by `syncHash()` — called from
   `switchTab()` — so refresh/bookmark/back-forward all work. `applyHash()` routes the
@@ -61,7 +68,8 @@ an as-of lookback: `close_today / close_asof(today − D) − 1`. The screener p
 ## Caching (two layers, both "database-like")
 **Server** (`cache.py`, JSON files under `DATA_DIR`): per-key TTL, optional `version`
 stamp. TTLs in `config.py`: screen 6h · profile/news/analysts 24h · 5y history 3d ·
-fundamentals **30d**. Bumping a module's `_SCHEMA` invalidates its old caches on read.
+fundamentals **30d** · implied shares **30d** (reused only if the cache covers ≥80% of the
+requested universe, so a partial run can't starve a full screen of weights). Bumping a module's `_SCHEMA` invalidates its old caches on read.
 **Client** (`localStorage`): base screen (`ss-base`), per-company profiles (`ss-co-*`),
 watchlist (`ss-watchlist`), filters, theme. `APP_SCHEMA` in `app.js` purges stale data
 caches on a shape change (keeps filters + theme).

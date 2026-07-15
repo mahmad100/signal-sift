@@ -24,6 +24,14 @@ re-rated yet. Signal Sift finds them and points you at the primary sources.
   filter by sector. Each row shows a ▲ Growing / ▼ Stalled status.
 - **Sector overview**: median return per GICS sector with a diverging bar chart
   and growing-vs-stalled counts. Click a sector to filter the table to it.
+- **Index-weight visualizer** (Weights tab): see each stock's and sector's
+  approximate share of the S&P 500, then **build a basket** — toggle whole
+  sectors, set "top N by weight", or hand-pick names — and compare its return to
+  SPY across every window, cap- or equal-weighted, with coverage (% of the index
+  by count and by market cap). Answers "how few names replicate the S&P 500's
+  return?" Weights are a full-market-cap approximation (not float-adjusted).
+- **Jump anywhere**: Ctrl-K / `/` command palette to any ticker, keyboard row
+  navigation, and deep links (`#/company/NVDA`, `#/weights`) that survive refresh.
 - **Flags "stalled" names** — return at or below a growth line you choose (default +5%).
 - **Ranks by stall score** (how many of the 7 windows are stalled) and relative
   under-performance vs. SPY.
@@ -68,6 +76,7 @@ re-rated yet. Signal Sift finds them and points you at the primary sources.
   | Profile, news, analysts | 24 hours |
   | 5-year price history | 3 days |
   | **Financial statements** | **30 days** |
+  | Implied shares (index weights) | 30 days |
 
   A price refresh reuses financial statements straight from disk — pulling
   income/cash-flow/balance-sheet data (which only changes quarterly) is avoided.
@@ -85,6 +94,7 @@ re-rated yet. Signal Sift finds them and points you at the primary sources.
 | Need                | Source                                   |
 |---------------------|------------------------------------------|
 | Prices / history    | Yahoo Finance via `yfinance`             |
+| Market caps / weights | Yahoo Finance via `yfinance` (approx.) |
 | Analyst estimates   | Yahoo Finance via `yfinance`             |
 | Filings             | SEC EDGAR (`data.sec.gov`, public JSON)  |
 | S&P 500 membership  | `datasets/s-and-p-500-companies` (GitHub)|
@@ -158,6 +168,7 @@ Signal Sift/
 │   ├── screener.py         # compute & filter the screen
 │   ├── edgar.py            # ticker→CIK, recent filings + links
 │   ├── analysts.py         # price targets, ratings, estimates
+│   ├── marketcaps.py       # implied share counts → index weights (30-day cache)
 │   ├── news.py             # recent headlines + sentiment tag
 │   ├── fundamentals.py     # income / cash-flow / balance-sheet (30-day cache)
 │   ├── company.py          # full pitchbook profile (fundamentals + history + news)

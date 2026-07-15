@@ -66,3 +66,4 @@ SCREEN_TTL = 60 * 60 * 6            # 6 hours  — prices / screen
 DETAIL_TTL = 60 * 60 * 24           # 24 hours — profile, news, analysts
 FUNDAMENTALS_TTL = 60 * 60 * 24 * 30  # 30 days — income/cash-flow statements
 LONG_HISTORY_TTL = 60 * 60 * 24 * 3   # 3 days  — 5y price history
+SHARES_TTL = 60 * 60 * 24 * 30        # 30 days — implied share counts (index weights)

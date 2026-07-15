@@ -7,7 +7,7 @@ let WINDOWS = ["1D", "1W", "1M", "3M", "6M", "9M", "1Y", "2Y", "3Y", "4Y", "5Y"]
 
 // Bump when the cached payload shape changes; stale local caches self-purge.
 // Keep in step with the server schema stamps in company.py / fundamentals.py.
-const APP_SCHEMA = "4";
+const APP_SCHEMA = "5";
 function purgeStaleCaches() {
   if (localStorage.getItem("ss-schema") === APP_SCHEMA) return;
   ["ss-base"].concat(
@@ -42,11 +42,14 @@ const State = {
   filters: { ...DEFAULT_FILTERS },
   secOver: "1Y",
   wlOver: "1Y",
+  wtOver: "1Y",               // Weights view: return window for basket-vs-SPY
+  wtScheme: "cap",            // Weights view: 'cap' | 'equal'
   active: "stocks",
   cursor: -1,                 // keyboard row cursor in stocks/watchlist tables
   detailTicker: null,
   detailCache: {},            // ticker -> profile (also mirrored to localStorage)
   watchlist: new Set(),       // starred tickers
+  basket: new Set(),          // Weights view: tickers in the "replicate SPY" basket
 };
 
 function loadWatchlist() {
@@ -58,6 +61,14 @@ function saveWatchlist() {
 }
 const isWatched = (t) => State.watchlist.has(t);
 
+function loadBasket() {
+  try { State.basket = new Set(JSON.parse(localStorage.getItem("ss-basket")) || []); }
+  catch (e) { State.basket = new Set(); }
+}
+function saveBasket() {
+  localStorage.setItem("ss-basket", JSON.stringify([...State.basket]));
+}
+
 function saveBase() {
   try { localStorage.setItem("ss-base", JSON.stringify(State.base)); } catch (e) {}
 }
@@ -68,12 +79,16 @@ function saveFilters() {
   localStorage.setItem("ss-filters", JSON.stringify(State.filters));
   localStorage.setItem("ss-secover", State.secOver);
   localStorage.setItem("ss-wlover", State.wlOver);
+  localStorage.setItem("ss-wtover", State.wtOver);
+  localStorage.setItem("ss-wtscheme", State.wtScheme);
 }
 function loadFilters() {
   try {
     Object.assign(State.filters, JSON.parse(localStorage.getItem("ss-filters")) || {});
     State.secOver = localStorage.getItem("ss-secover") || "1Y";
     State.wlOver = localStorage.getItem("ss-wlover") || "1Y";
+    State.wtOver = localStorage.getItem("ss-wtover") || "1Y";
+    State.wtScheme = localStorage.getItem("ss-wtscheme") || "cap";
   } catch (e) {}
 }
 function clearDetailCache() {
@@ -351,6 +366,165 @@ function renderSectors() {
     el.onclick = () => go(el.dataset.sector));
 }
 
+// ---------------- Weights view (index-weight visualizer) ----------------
+// Approximate SPY weights from each name's market_cap (implied shares × price,
+// supplied by the backend). All `wt*`/`basket*` names to avoid the company.js
+// shared-scope collision.
+function wpct(frac, d = 2) { return frac == null ? "—" : (frac * 100).toFixed(d) + "%"; }
+
+function weightUniverse() {
+  const rows = (State.base && State.base.rows) || [];
+  const capped = rows.filter((r) => r.market_cap != null && r.market_cap > 0);
+  const total = capped.reduce((a, r) => a + r.market_cap, 0);
+  return { rows, capped, total };
+}
+
+// Weighted trailing return of the current basket over one window (or null).
+// Cap-weighted normalizes market caps within the basket; equal weights 1/N.
+function basketReturn(over, scheme) {
+  const rows = State.base.rows.filter((r) => State.basket.has(r.ticker) && r.returns[over] != null);
+  if (!rows.length) return null;
+  const capd = rows.filter((r) => r.market_cap != null && r.market_cap > 0);
+  if (scheme === "cap" && capd.length) {
+    const tot = capd.reduce((a, r) => a + r.market_cap, 0);
+    return capd.reduce((a, r) => a + (r.market_cap / tot) * r.returns[over], 0);
+  }
+  return rows.reduce((a, r) => a + r.returns[over], 0) / rows.length;   // equal (or cap fallback)
+}
+
+function updateBasketCount() { $("wtCount").textContent = State.basket.size; }
+
+function toggleBasket(ticker) {
+  if (State.basket.has(ticker)) State.basket.delete(ticker);
+  else State.basket.add(ticker);
+  saveBasket(); updateBasketCount(); renderWeights();
+}
+function setBasket(tickers) {
+  State.basket = new Set(tickers);
+  saveBasket(); updateBasketCount(); renderWeights();
+}
+function toggleSectorBasket(sector) {
+  const names = State.base.rows.filter((r) => (r.sector || "Unknown") === sector).map((r) => r.ticker);
+  const allIn = names.length && names.every((t) => State.basket.has(t));
+  names.forEach((t) => (allIn ? State.basket.delete(t) : State.basket.add(t)));
+  saveBasket(); updateBasketCount(); renderWeights();
+}
+
+function coverageVerdict(n, tot, diff, over) {
+  if (diff == null) return "";
+  const word = Math.abs(diff) < 0.01 ? "tracked SPY almost exactly"
+             : diff > 0 ? "beat SPY" : "trailed SPY";
+  return `These ${n} names (${wpct(n / tot, 0)} of the index by count) ${word} over ${over}.`;
+}
+
+function renderWtSectors(over) {
+  const { rows, capped, total } = weightUniverse();
+  const mc = {}, cnt = {}, inb = {};
+  capped.forEach((r) => { const s = r.sector || "Unknown"; mc[s] = (mc[s] || 0) + r.market_cap; });
+  rows.forEach((r) => {
+    const s = r.sector || "Unknown";
+    cnt[s] = (cnt[s] || 0) + 1;
+    if (State.basket.has(r.ticker)) inb[s] = (inb[s] || 0) + 1;
+  });
+  const secs = Object.entries(mc).map(([s, v]) => ({ sector: s, w: total ? v / total : 0 }))
+    .sort((a, b) => b.w - a.w);
+  const maxW = Math.max(0.01, ...secs.map((s) => s.w));
+  $("wtSectors").innerHTML = secs.map((s) => {
+    const inCount = inb[s.sector] || 0, tot = cnt[s.sector] || 0;
+    const full = inCount > 0 && inCount === tot, some = inCount > 0 && !full;
+    return `<div class="wtsec ${full ? "full" : some ? "some" : ""}" data-sector="${esc(s.sector)}">
+      <div class="wtsec-name">${esc(s.sector)} <span class="na">(${inCount}/${tot})</span></div>
+      <div class="wtsec-bar"><span class="wtsec-fill" style="width:${(s.w / maxW) * 100}%"></span></div>
+      <div class="wtsec-w">${wpct(s.w)}</div></div>`;
+  }).join("");
+  $("wtSectors").querySelectorAll(".wtsec").forEach((el) =>
+    (el.onclick = () => toggleSectorBasket(el.dataset.sector)));
+}
+
+function renderWtNames(over) {
+  const { capped, total } = weightUniverse();
+  const q = ($("wtSearch").value || "").trim().toLowerCase();
+  $("wtHead").innerHTML =
+    `<th class="star-h"></th><th>Ticker</th><th>Company</th><th>Sector</th>` +
+    `<th class="num">Weight</th><th class="num">Price</th><th class="num">${over}</th>`;
+  let rows = [...capped].sort((a, b) => b.market_cap - a.market_cap);
+  rows = q
+    ? rows.filter((r) => r.ticker.toLowerCase().includes(q) || (r.name || "").toLowerCase().includes(q))
+    : rows.slice(0, 100);
+  const tb = $("wtRows");
+  tb.innerHTML = "";
+  const frag = document.createDocumentFragment();
+  rows.forEach((r) => {
+    const on = State.basket.has(r.ticker);
+    const tr = document.createElement("tr");
+    tr.dataset.tk = r.ticker;
+    if (on) tr.classList.add("inbasket");
+    tr.innerHTML =
+      `<td class="starcell"><span class="bchk ${on ? "on" : "off"}">${on ? "✓" : "+"}</span></td>` +
+      `<td class="tk">${r.ticker}</td><td>${esc(r.name)}</td><td>${esc(r.sector || "")}</td>` +
+      `<td class="num">${wpct(total ? r.market_cap / total : 0)}</td>` +
+      `<td class="num">$${Number(r.price).toFixed(2)}</td>` +
+      `<td class="num">${pct(r.returns[over])}</td>`;
+    tr.onclick = () => toggleBasket(r.ticker);
+    frag.appendChild(tr);
+  });
+  tb.appendChild(frag);
+}
+
+function renderWeights() {
+  if (!State.base) return;
+  const over = State.wtOver, scheme = State.wtScheme;
+  const { rows, capped, total } = weightUniverse();
+
+  const hasData = capped.length > 0;
+  $("wtEmpty").classList.toggle("hidden", hasData);
+  $("wtBody").classList.toggle("hidden", !hasData);
+  if (!hasData) { $("wtStatus").textContent = ""; return; }
+
+  // Index totals + concentration.
+  const byW = [...capped].sort((a, b) => b.market_cap - a.market_cap);
+  const share = (n) => byW.slice(0, n).reduce((a, r) => a + r.market_cap, 0) / total;
+  $("wtStatus").innerHTML =
+    `Index ≈ <b>${money(total)}</b> across ${capped.length} weighted names · ` +
+    `top 10 = <b>${wpct(share(10))}</b> · top 50 = <b>${wpct(share(50))}</b> of the S&P 500. ` +
+    `<span class="na">Approx. weights (full market cap, not float-adjusted).</span>`;
+
+  // Basket vs SPY across all windows.
+  const nBasket = rows.filter((r) => State.basket.has(r.ticker)).length;
+  const basketMc = capped.filter((r) => State.basket.has(r.ticker)).reduce((a, r) => a + r.market_cap, 0);
+  const bench = State.base.meta.benchmark_returns || {};
+  if (nBasket) {
+    const body = WINDOWS.map((w) => {
+      const br = basketReturn(w, scheme), sr = bench[w];
+      const diff = br != null && sr != null ? br - sr : null;
+      return `<tr><td class="wcw">${w}</td><td class="num">${pct(br)}</td>` +
+             `<td class="num">${pct(sr)}</td><td class="num">${diff == null ? '<span class="na">—</span>' : pct(diff)}</td></tr>`;
+    }).join("");
+    $("wtCompare").innerHTML =
+      `<table class="wtcmp"><thead><tr><th>Window</th><th class="num">Basket</th>` +
+      `<th class="num">SPY</th><th class="num">Diff</th></tr></thead><tbody>${body}</tbody></table>`;
+  } else {
+    $("wtCompare").innerHTML =
+      `<p class="na">Add names below (or toggle a sector) to build a basket, then see how its return compares to SPY.</p>`;
+  }
+
+  // Coverage.
+  const brOver = nBasket ? basketReturn(over, scheme) : null;
+  const srOver = bench[over];
+  const dOver = brOver != null && srOver != null ? brOver - srOver : null;
+  $("wtCoverage").innerHTML =
+    `<div class="kv"><span class="k">Names in basket</span><span>${nBasket} / ${rows.length}</span></div>` +
+    `<div class="kv"><span class="k">By count</span><span>${wpct(nBasket / rows.length, 1)}</span></div>` +
+    `<div class="kv"><span class="k">By market cap</span><span>${wpct(total ? basketMc / total : 0)}</span></div>` +
+    `<div class="kv"><span class="k">Weighting</span><span>${scheme === "cap" ? "Cap-weighted" : "Equal-weighted"}</span></div>` +
+    `<div class="kv"><span class="k">Over ${over}: basket vs SPY</span><span>${pct(brOver)} vs ${pct(srOver)}</span></div>` +
+    `<div class="kv"><span class="k">Difference</span><span>${dOver == null ? '<span class="na">—</span>' : pct(dOver)}</span></div>` +
+    (nBasket ? `<p class="sub2">${coverageVerdict(nBasket, rows.length, dOver, over)}</p>` : "");
+
+  renderWtSectors(over);
+  renderWtNames(over);
+}
+
 // ---------------- Detail view ----------------
 async function loadProfile(ticker, force = false) {
   if (!force && State.detailCache[ticker]) return State.detailCache[ticker];
@@ -415,6 +589,7 @@ function paletteActions() {
     { type: "nav", label: "Go to Individual stocks", hint: "tab", run: () => switchTab("stocks") },
     { type: "nav", label: "Go to Watchlist", hint: "tab", run: () => switchTab("watchlist") },
     { type: "nav", label: "Go to Sectors", hint: "tab", run: () => switchTab("sectors") },
+    { type: "nav", label: "Go to Weights", hint: "tab", run: () => switchTab("weights") },
     { type: "nav", label: "Refresh data (re-pull prices)", hint: "action", run: () => $("refresh").click() },
   ];
 }
@@ -548,13 +723,14 @@ function moveCursor(delta) {
 function switchTab(name) {
   clearCursor();
   State.active = name;
-  ["stocks", "watchlist", "sectors", "detail"].forEach((v) => {
+  ["stocks", "watchlist", "sectors", "weights", "detail"].forEach((v) => {
     $("view-" + v).classList.toggle("hidden", v !== name);
   });
   document.querySelectorAll(".tab").forEach((t) =>
     t.classList.toggle("active", t.dataset.tab === name));
   if (name === "sectors") renderSectors();
   if (name === "watchlist") renderWatchlist();
+  if (name === "weights") renderWeights();
   syncHash();
 }
 
@@ -578,7 +754,7 @@ function applyHash() {
     openDetail(decodeURIComponent(parts[1]).toUpperCase());
     return;
   }
-  switchTab(["watchlist", "sectors", "stocks"].includes(parts[0]) ? parts[0] : "stocks");
+  switchTab(["watchlist", "sectors", "weights", "stocks"].includes(parts[0]) ? parts[0] : "stocks");
 }
 
 // ---------------- Boot + events ----------------
@@ -588,6 +764,8 @@ function syncControlsFromState() {
   });
   $("secOver").value = State.secOver;
   $("wlOver").value = State.wlOver;
+  $("wtOver").value = State.wtOver;
+  $("wtScheme").value = State.wtScheme;
   $("theme").value = localStorage.getItem("ss-theme") || "midnight";
 }
 
@@ -604,7 +782,9 @@ async function boot() {
   purgeStaleCaches();
   loadFilters();
   loadWatchlist();
+  loadBasket();
   updateWatchCount();
+  updateBasketCount();
   syncControlsFromState();
 
   const cached = loadBase();
@@ -638,6 +818,26 @@ async function boot() {
   });
   $("wlOver").addEventListener("change", () => {
     State.wlOver = $("wlOver").value; saveFilters(); renderWatchlist();
+  });
+
+  // Weights view controls.
+  $("wtOver").addEventListener("change", () => {
+    State.wtOver = $("wtOver").value; saveFilters(); renderWeights();
+  });
+  $("wtScheme").addEventListener("change", () => {
+    State.wtScheme = $("wtScheme").value; saveFilters(); renderWeights();
+  });
+  $("wtTopBtn").addEventListener("click", () => {
+    const n = Math.max(1, Math.min(500, parseInt($("wtTopN").value, 10) || 50));
+    const top = [...weightUniverse().capped].sort((a, b) => b.market_cap - a.market_cap)
+      .slice(0, n).map((r) => r.ticker);
+    setBasket(top);
+  });
+  $("wtReset").addEventListener("click", () => setBasket([]));
+  let wtSearchT;
+  $("wtSearch").addEventListener("input", () => {
+    clearTimeout(wtSearchT);
+    wtSearchT = setTimeout(() => renderWtNames(State.wtOver), 150);
   });
 
   // Tabs.
