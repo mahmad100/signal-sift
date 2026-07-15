@@ -17,6 +17,9 @@
       </div>
     </div>
     <div class="topright">
+      <button id="cmdkBtn" class="ghost cmdk-btn" title="Jump to any ticker — also press / or Ctrl-K">
+        <span aria-hidden="true">⌕</span><span>Search ticker…</span><kbd class="cmdk-kbd">Ctrl K</kbd>
+      </button>
       <label class="themepick">Theme
         <select id="theme">
           <option value="midnight">Midnight</option>
@@ -144,6 +147,24 @@
       <div id="detailBody"><p class="loading">Select a stock…</p></div>
     </section>
   </main>
+
+  <!-- ============ COMMAND PALETTE ============ -->
+  <div id="cmdk" class="cmdk hidden" role="dialog" aria-modal="true" aria-label="Jump to a stock">
+    <div class="cmdk-panel">
+      <div class="cmdk-inputrow">
+        <span class="cmdk-icon" aria-hidden="true">⌕</span>
+        <input id="cmdkInput" class="cmdk-input" type="text" autocomplete="off" spellcheck="false"
+               placeholder="Jump to a ticker or company…">
+        <span class="cmdk-esc">esc</span>
+      </div>
+      <div id="cmdkList" class="cmdk-list"></div>
+      <div class="cmdk-foot">
+        <span><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
+        <span><kbd>↵</kbd> open</span>
+        <span><kbd>★</kbd> click star to watch</span>
+      </div>
+    </div>
+  </div>
 
   <script src="/static/company.js"></script>
   <script src="/static/app.js"></script>
