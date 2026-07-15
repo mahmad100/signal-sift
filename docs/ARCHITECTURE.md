@@ -46,6 +46,11 @@ Signal Sift/
   from the cached universe, then renders with `buildProfileHTML()` from `company.js`.
 - **Sectors:** computed client-side from the base rows (`computeSectors` in `app.js`);
   `/api/sectors` exists too but the SPA doesn't need it.
+- **Routing:** the active view is mirrored into `location.hash` (`#/stocks`,
+  `#/watchlist`, `#/sectors`, `#/company/<TICKER>`) by `syncHash()` — called from
+  `switchTab()` — so refresh/bookmark/back-forward all work. `applyHash()` routes the
+  initial hash and `hashchange`; a `programmaticHash` guard stops our own writes from
+  re-triggering a route. Jump anywhere fast via the **command palette** (Ctrl-K / `/`).
 
 ## The 11 windows
 Defined once in `config.WINDOWS` (calendar-day lookbacks). Everything is data-driven from
