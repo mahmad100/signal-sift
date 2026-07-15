@@ -309,6 +309,48 @@ tbody tr.rowsel { background: var(--panel2); box-shadow: inset 3px 0 0 var(--acc
 .bchk.off { color: var(--muted); }
 #wtRows tr:hover .bchk.off { border-color: var(--accent); color: var(--accent); }
 
+/* ===== Intro splash overlay (front door — plays on every load) ===== */
+.ss-intro {
+  position: fixed; inset: 0; z-index: 300;
+  background: radial-gradient(70% 60% at 50% 46%, var(--panel2) 0%, var(--bg) 60%, var(--bg) 100%);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 34px;
+  transition: opacity .55s ease;
+}
+.ss-intro.gone { opacity: 0; pointer-events: none; }
+.ss-lockup { display: flex; align-items: center; justify-content: center; gap: clamp(14px, 3vw, 26px); }
+.ss-mark {
+  --sz: clamp(46px, 11vw, 82px);
+  position: relative; flex: none; width: var(--sz); height: var(--sz);
+  border-radius: 50%; overflow: hidden;
+  border: 3px solid var(--accent); box-shadow: 0 0 22px -2px var(--accent);
+  opacity: 0; animation: ss-appear 520ms ease-out forwards;
+}
+@keyframes ss-appear { from { opacity: 0; transform: scale(.6); } to { opacity: 1; transform: none; } }
+.ss-sweep { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
+.ss-prog { fill: none; stroke: var(--accent); stroke-width: 19; stroke-dasharray: 56.549; stroke-dashoffset: 56.549; }
+.ss-mark.load .ss-sweep { animation: ss-spin 1300ms cubic-bezier(.3,.45,.2,1) forwards; }
+.ss-mark.load .ss-prog  { animation: ss-fill 1300ms cubic-bezier(.3,.45,.2,1) forwards; }
+@keyframes ss-spin { from { transform: rotate(-450deg); } to { transform: rotate(-90deg); } }
+@keyframes ss-fill { from { stroke-dashoffset: 56.549; } to { stroke-dashoffset: 28.274; } }
+.ss-word { display: inline-flex; align-items: center; margin: 0; color: var(--text); font-weight: 600; letter-spacing: .5px; font-size: clamp(30px, 8vw, 62px); white-space: nowrap; }
+.ss-caret { display: inline-block; width: 2px; height: 1em; margin-left: 3px; background: var(--accent); vertical-align: -.08em; animation: ss-blink 1s steps(1) infinite; }
+.ss-caret.done { animation: ss-fadeout 420ms ease forwards; }
+@keyframes ss-blink { 50% { opacity: 0; } }
+@keyframes ss-fadeout { to { opacity: 0; } }
+.ss-sub { display: flex; flex-direction: column; align-items: center; gap: 16px; opacity: 0; transform: translateY(6px); transition: opacity .7s ease, transform .7s ease; }
+.ss-sub.on { opacity: 1; transform: none; }
+.ss-tag { margin: 0; color: var(--muted); font-size: clamp(11px, 2.6vw, 13px); letter-spacing: 3px; text-transform: uppercase; }
+.ss-enter { background: transparent; color: var(--text); font: inherit; font-size: 14px; letter-spacing: 1px; cursor: pointer; padding: 9px 20px; border: 1px solid var(--line); border-radius: 999px; transition: border-color .15s, color .15s; }
+.ss-enter:hover, .ss-enter:focus-visible { border-color: var(--accent); color: var(--accent); outline: none; filter: none; }
+.ss-arw { color: var(--accent); }
+@media (prefers-reduced-motion: reduce) {
+  .ss-mark { animation: none; opacity: 1; }
+  .ss-sweep { animation: none !important; }
+  .ss-prog { stroke-dashoffset: 28.274; animation: none !important; }
+  .ss-caret { animation: none; opacity: 0; }
+  .ss-intro { transition: none; }
+}
+
 /* News */
 .newsmix { display: flex; gap: 14px; font-size: 12.5px; margin-bottom: 10px; flex-wrap: wrap; }
 .sent-pos { color: var(--up); } .sent-neg { color: var(--down); } .sent-neu { color: var(--muted); }

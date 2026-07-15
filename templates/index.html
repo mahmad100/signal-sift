@@ -8,6 +8,70 @@
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
+  <!-- ============ INTRO SPLASH (front door — plays on every load / refresh) ============ -->
+  <noscript><style>#ss-intro{display:none!important}</style></noscript>
+  <div id="ss-intro" class="ss-intro" role="dialog" aria-label="Signal Sift">
+    <div class="ss-lockup">
+      <span class="ss-mark" id="ssMark" aria-hidden="true">
+        <svg class="ss-sweep" viewBox="0 0 36 36"><circle class="ss-prog" cx="18" cy="18" r="9"></circle></svg>
+      </span>
+      <h1 class="ss-word"><span id="ssTyped"></span><span class="ss-caret" id="ssCaret" aria-hidden="true"></span></h1>
+    </div>
+    <div class="ss-sub" id="ssSub">
+      <p class="ss-tag">S&amp;P 500 Trend Radar</p>
+      <button class="ss-enter" id="ssEnter" type="button">Enter <span class="ss-arw">&rarr;</span></button>
+    </div>
+  </div>
+  <script>
+    (function () {
+      var reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      var overlay = document.getElementById("ss-intro");
+      var mark = document.getElementById("ssMark");
+      var typed = document.getElementById("ssTyped");
+      var caret = document.getElementById("ssCaret");
+      var sub = document.getElementById("ssSub");
+      var name = "Signal Sift";
+      var timer = null, finished = false;
+
+      function reveal() { caret.classList.add("done"); sub.classList.add("on"); finished = true; }
+      function finishAnim() {                 // skip straight to the end
+        if (timer) { clearTimeout(timer); timer = null; }
+        mark.classList.add("load"); typed.textContent = name; reveal();
+      }
+      function dismiss() {
+        overlay.classList.add("gone");
+        document.removeEventListener("keydown", onKey, true);
+        setTimeout(function () { overlay.style.display = "none"; }, 560);
+      }
+      function onKey(e) {                      // while the intro is up, it owns the keyboard
+        if (overlay.style.display === "none") return;
+        if (e.key === "Enter" || e.key === " " || e.key === "Escape") {
+          e.preventDefault(); e.stopPropagation();
+          finished ? dismiss() : finishAnim();
+        } else { e.stopPropagation(); }        // don't leak keys to the app (Ctrl-R still works — no preventDefault)
+      }
+
+      if (reduce) { typed.textContent = name; reveal(); }
+      else {
+        var i = 0;
+        function type() {
+          if (i >= name.length) { timer = setTimeout(reveal, 500); return; }
+          typed.textContent += name[i++];
+          timer = setTimeout(type, name[i - 1] === " " ? 150 : 82 + Math.random() * 45);
+        }
+        setTimeout(function () { mark.classList.add("load"); }, 520);  // ring spins + fills to half
+        timer = setTimeout(type, 1980);                                // then the name types
+      }
+
+      document.getElementById("ssEnter").addEventListener("click", dismiss);
+      overlay.addEventListener("click", function (e) {
+        if (e.target.closest("#ssEnter")) return;
+        finished ? dismiss() : finishAnim();
+      });
+      document.addEventListener("keydown", onKey, true);
+    })();
+  </script>
+
   <header class="topbar">
     <div class="brand">
       <span class="logo">◑</span>
