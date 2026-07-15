@@ -4,7 +4,7 @@ import json
 import os
 
 import config
-from . import cache, prices, universe
+from . import cache, marketcaps, prices, universe
 
 _CACHE_KEY = "screen_latest"
 
@@ -85,6 +85,13 @@ def run_screen(force: bool = False) -> dict:
             "stalled_windows": stalled,
             "stall_score": len(stalled),
         })
+
+    # Approximate index weights: implied shares (cached ~30d) × current price, so
+    # market cap tracks the latest price without re-pulling the slow per-name data.
+    shares = marketcaps.get_shares([r["ticker"] for r in rows])
+    for r in rows:
+        s = shares.get(r["ticker"])
+        r["market_cap"] = int(round(s * r["price"])) if s and r["price"] else None
 
     payload = {
         "generated_at": dt.datetime.now().isoformat(timespec="seconds"),

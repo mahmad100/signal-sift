@@ -38,6 +38,7 @@
     <button class="tab active" data-tab="stocks">Individual stocks</button>
     <button class="tab" data-tab="watchlist" data-tabbtn="watchlist">★ Watchlist <span class="tabcount" id="wlCount">0</span></button>
     <button class="tab" data-tab="sectors">Sectors</button>
+    <button class="tab" data-tab="weights" data-tabbtn="weights">Weights <span class="tabcount" id="wtCount">0</span></button>
     <button class="tab hidden" data-tab="detail" id="detailTab">
       <span id="detailTabName">Detail</span> <span class="tabx" id="detailClose">✕</span>
     </button>
@@ -139,6 +140,52 @@
       <div class="card"><h3>Median return by GICS sector</h3><div id="sectorChart"></div></div>
       <div class="card"><h3>Sector heatmap — median return across windows</h3>
         <div class="tablewrap"><div id="sectorHeat"></div></div>
+      </div>
+    </section>
+
+    <!-- ============ WEIGHTS ============ -->
+    <section id="view-weights" class="view hidden">
+      <div class="controls">
+        <label>Return window
+          <select id="wtOver">
+            <option value="1D">1 day</option><option value="1W">1 week</option>
+            <option value="1M">1 month</option><option value="3M">3 months</option>
+            <option value="6M">6 months</option><option value="9M">9 months</option>
+            <option value="1Y" selected>1 year</option><option value="2Y">2 years</option>
+            <option value="3Y">3 years</option><option value="4Y">4 years</option>
+            <option value="5Y">5 years</option>
+          </select>
+        </label>
+        <label>Weighting
+          <select id="wtScheme">
+            <option value="cap" selected>Cap-weighted (mirror SPY)</option>
+            <option value="equal">Equal-weighted</option>
+          </select>
+        </label>
+        <label>Quick-fill: top N
+          <input id="wtTopN" class="numin" type="number" min="1" max="500" value="50">
+        </label>
+        <button id="wtTopBtn" class="ghost small">Set basket to top N</button>
+        <button id="wtReset" class="ghost small">Clear basket</button>
+        <input id="wtSearch" class="search" placeholder="Find a name to add…" autocomplete="off">
+      </div>
+      <div id="wtStatus" class="status"></div>
+      <div id="wtEmpty" class="empty hidden">
+        <div class="empty-star">⚖</div>
+        <p>Weight data isn't loaded yet.</p>
+        <p class="na">Hit <b>↻ Refresh data</b> to pull approximate market caps for the S&amp;P 500.</p>
+      </div>
+      <div id="wtBody">
+        <div class="grid2">
+          <div class="card"><h3>Your basket vs SPY</h3><div id="wtCompare"></div></div>
+          <div class="card"><h3>Coverage</h3><div id="wtCoverage"></div></div>
+        </div>
+        <div class="card"><h3>Sector weights — click a sector to add / remove all its names</h3>
+          <div id="wtSectors"></div>
+        </div>
+        <div class="card"><h3>Names by index weight — click a row to add / remove from your basket</h3>
+          <div class="tablewrap"><table id="wtGrid"><thead><tr id="wtHead"></tr></thead><tbody id="wtRows"></tbody></table></div>
+        </div>
       </div>
     </section>
 

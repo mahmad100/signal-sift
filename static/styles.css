@@ -282,6 +282,33 @@ body.pb { background: var(--bg); }
 /* Keyboard row cursor in the stocks / watchlist tables */
 tbody tr.rowsel { background: var(--panel2); box-shadow: inset 3px 0 0 var(--accent); }
 
+/* ===== Weights view (index-weight visualizer) ===== */
+.numin { background: var(--panel2); color: var(--text); border: 1px solid var(--line);
+  border-radius: 7px; padding: 7px 9px; font-size: 13px; width: 72px; }
+.wtcmp { width: 100%; border-collapse: collapse; font-size: 13px; }
+.wtcmp th { text-align: right; padding: 6px 8px; border-bottom: 1px solid var(--line);
+  color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .4px; }
+.wtcmp th:first-child { text-align: left; }
+.wtcmp td { padding: 6px 8px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+.wtcmp td.wcw { font-weight: 700; color: var(--muted); }
+.wtcmp tbody tr:last-child td { border-bottom: 0; }
+.wtsec { display: grid; grid-template-columns: 230px 1fr 66px; gap: 12px; align-items: center;
+  padding: 7px 6px; border-bottom: 1px solid var(--line); cursor: pointer; border-left: 3px solid transparent; }
+.wtsec:last-child { border-bottom: 0; }
+.wtsec:hover { background: var(--panel2); }
+.wtsec.some { border-left-color: var(--flat); }
+.wtsec.full { border-left-color: var(--accent); background: rgba(76,154,255,.06); }
+.wtsec-name { font-weight: 600; font-size: 13px; }
+.wtsec-bar { position: relative; height: 16px; background: var(--bg); border-radius: 4px; overflow: hidden; }
+.wtsec-fill { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent); opacity: .8; border-radius: 4px; }
+.wtsec-w { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; font-size: 13px; }
+#wtRows tr.inbasket { background: rgba(76,154,255,.10); }
+.bchk { display: inline-block; width: 18px; height: 18px; line-height: 17px; text-align: center;
+  border-radius: 5px; font-weight: 800; font-size: 12px; border: 1px solid var(--line); }
+.bchk.on { background: var(--accent); color: var(--oncolor); border-color: var(--accent); }
+.bchk.off { color: var(--muted); }
+#wtRows tr:hover .bchk.off { border-color: var(--accent); color: var(--accent); }
+
 /* News */
 .newsmix { display: flex; gap: 14px; font-size: 12.5px; margin-bottom: 10px; flex-wrap: wrap; }
 .sent-pos { color: var(--up); } .sent-neg { color: var(--down); } .sent-neu { color: var(--muted); }
