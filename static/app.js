@@ -555,6 +555,30 @@ function switchTab(name) {
     t.classList.toggle("active", t.dataset.tab === name));
   if (name === "sectors") renderSectors();
   if (name === "watchlist") renderWatchlist();
+  syncHash();
+}
+
+// ---------------- URL routing (deep links) ----------------
+// Mirror the active view into location.hash so a stock or tab survives a
+// refresh and is bookmarkable, and browser back/forward navigate the app.
+//   #/stocks  #/watchlist  #/sectors  #/company/<TICKER>
+let programmaticHash = false;   // our own hash writes shouldn't re-trigger routing
+function currentHash() {
+  if (State.active === "detail" && State.detailTicker)
+    return "#/company/" + encodeURIComponent(State.detailTicker);
+  return "#/" + State.active;
+}
+function syncHash() {
+  const h = currentHash();
+  if (location.hash !== h) { programmaticHash = true; location.hash = h; }
+}
+function applyHash() {
+  const parts = location.hash.replace(/^#\/?/, "").split("/").filter(Boolean);
+  if (parts[0] === "company" && parts[1]) {
+    openDetail(decodeURIComponent(parts[1]).toUpperCase());
+    return;
+  }
+  switchTab(["watchlist", "sectors", "stocks"].includes(parts[0]) ? parts[0] : "stocks");
 }
 
 // ---------------- Boot + events ----------------
@@ -692,6 +716,14 @@ async function boot() {
       $("refresh").textContent = "↻ Refresh data";
     }
   });
+
+  // Deep-link routing: react to back/forward + bookmarks, and honor the
+  // initial hash so a refresh lands where you were.
+  window.addEventListener("hashchange", () => {
+    if (programmaticHash) { programmaticHash = false; return; }
+    applyHash();
+  });
+  if (location.hash.replace(/^#\/?/, "").split("/").filter(Boolean).length) applyHash();
 }
 
 boot();
