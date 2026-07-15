@@ -1,13 +1,17 @@
 # ◑ Signal Sift
 
-A hedge-fund-style screener that sifts the **S&P 500** for names that **haven't
-grown** over trailing windows (1M / 3M / 6M / 9M / 12M), then hands you the
-threads to pull on *why* — direct links to **SEC filings** and **analyst
-expectations**.
+A trend radar for the **S&P 500**: it screens every name across 11 trailing windows
+(1D / 1W / 1M / 3M / 6M / 9M / 1Y / 2Y / 3Y / 4Y / 5Y), flags each as growing or stalled,
+and hands you the threads to pull on *why* — fundamentals, news, analyst targets, and
+direct links to **SEC filings**.
 
 The thesis: a large-cap that goes sideways while the index runs is a *signal*.
 Sometimes it's a value trap; sometimes it's a coiled spring the market hasn't
 re-rated yet. Signal Sift finds them and points you at the primary sources.
+
+> **Working on this project?** Start with **[docs/HANDOFF.md](docs/HANDOFF.md)** —
+> current state, how to run/test/deploy, and next steps. See also
+> [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## What it does
 
