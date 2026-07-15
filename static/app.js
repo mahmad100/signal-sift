@@ -904,13 +904,19 @@ async function boot() {
   $("refresh").addEventListener("click", async () => {
     $("refresh").disabled = true;
     $("refresh").textContent = "↻ Refreshing…";
-    $("status-line").textContent = "Re-pulling all prices from Yahoo (this can take a minute)…";
+    $("status-line").textContent = "Re-pulling prices from Yahoo (this can take up to a minute)…";
     clearDetailCache();
     try {
       await fetchBase(true);
       setMeta();
       renderStocks();
       if (State.active === "sectors") renderSectors();
+      if (State.active === "weights") renderWeights();
+      if (State.active === "watchlist") renderWatchlist();
+    } catch (e) {
+      $("status-line").innerHTML =
+        `<span class="ret-down">Refresh failed or timed out.</span> ` +
+        `Showing the last data — try again in a moment.`;
     } finally {
       $("refresh").disabled = false;
       $("refresh").textContent = "↻ Refresh data";

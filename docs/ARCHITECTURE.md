@@ -78,11 +78,17 @@ caches on a shape change (keeps filters + theme).
 Building the screen is a ~25s pull of ~5y prices for 500 names — too slow for a serverless
 cold start. So:
 - `config.SERVERLESS` (Vercel/Lambda) ⇒ `DATA_DIR=/tmp/...` and `LIVE_SCREEN=False`.
-- With `LIVE_SCREEN` off, `run_screen()` serves the committed
-  `data/precomputed_screen.json` (even on `force`/Refresh) — never the live pull.
-- The **precompute Action** (schedule + manual) runs the live pull on a GitHub runner,
-  commits the JSON; that push redeploys Vercel with fresh data.
-- Locally `LIVE_SCREEN=True`, so dev pulls live as normal.
+- With `LIVE_SCREEN` off, **normal loads** serve the committed `data/precomputed_screen.json`
+  (instant cold starts). A **Refresh** (`force=True`) does an on-demand live *price* pull
+  (`_live_screen`) and recomputes returns + weights, reusing the implied share counts
+  recovered from the precompute (`_shares_from_rows`) so it skips the slow per-name
+  market-cap fetch and stays within the 60s function budget. Any failure/timeout falls
+  back to the committed file — a Refresh never leaves the app empty.
+- The **precompute Action** (schedule + manual) runs the full pull (incl. fresh share
+  counts) on a GitHub runner and commits the JSON; that push redeploys Vercel. Share
+  counts move ~quarterly, so serving day-to-day weight changes from live prices × the
+  committed shares is accurate between Action runs.
+- Locally `LIVE_SCREEN=True`, so dev pulls fully live (and fetches share counts) as normal.
 
 ## Frontend gotchas (the ones that bite)
 - **Global-scope sharing:** `company.js` and `app.js` are plain `<script>`s sharing the
