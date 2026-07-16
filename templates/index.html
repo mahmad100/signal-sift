@@ -43,7 +43,7 @@
       var caret = document.getElementById("ssCaret");
       var sub = document.getElementById("ssSub");
       var name = "Signal Sift";
-      var HOLD_MS = 120;                      // beat to read the wordmark before it clears itself
+      var HOLD_MS = 160;                      // beat to read the wordmark before it clears itself
       var timer = null, finished = false, gone = false;
 
       function reveal() {
@@ -74,12 +74,12 @@
       else {
         var i = 0;
         function type() {
-          if (i >= name.length) { timer = setTimeout(reveal, 60); return; }
+          if (i >= name.length) { timer = setTimeout(reveal, 100); return; }
           typed.textContent += name[i++];
-          timer = setTimeout(type, name[i - 1] === " " ? 40 : 22 + Math.random() * 10);
+          timer = setTimeout(type, name[i - 1] === " " ? 55 : 34 + Math.random() * 12);
         }
-        setTimeout(function () { mark.classList.add("load"); }, 150);  // ring spins + fills to half
-        timer = setTimeout(type, 520);                                 // then the name types
+        setTimeout(function () { mark.classList.add("load"); }, 220);  // ring spins + fills to half
+        timer = setTimeout(type, 780);                                 // then the name types
       }
 
       // No visible control, but a click or key still skips ahead for the impatient.
