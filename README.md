@@ -68,8 +68,10 @@ re-rated yet. Signal Sift finds them and points you at the primary sources.
   sorting, search, and sector math happen in the browser, so nothing re-pulls
   when you change a control.
 - **Local caching** — the screen and each company profile are cached in
-  `localStorage`; reopening the app or a stock is instant. Data stays put until
-  you hit **↻ Refresh data**, which forces a fresh pull and clears the caches.
+  `localStorage`; reopening the app or a stock is instant. Once the cached screen
+  is over an hour old the app re-checks in the background on load and adopts any
+  newer data, so scheduled refreshes reach you without a click. **↻ Refresh data**
+  forces the issue and clears the caches.
 - **Database-style server caches** — each data type is stored on disk with its
   own lifetime, so fast-moving data expires quickly while slow-moving data
   persists and is never needlessly re-pulled:
@@ -130,14 +132,30 @@ repo in Vercel and it builds from `requirements.txt` — no extra setup.
 start. So the slow work runs in CI instead: the **`Precompute screen` GitHub
 Action** (`.github/workflows/precompute.yml`) runs the screen on a schedule and
 commits `data/precomputed_screen.json`. On serverless (`config.LIVE_SCREEN` is
-False) the app **serves that committed file** — both cold starts and the Refresh
-button — so `/api/screen` returns in well under a second and never runs the live
-pull. Each Action commit redeploys Vercel with fresh data. Per-stock detail pages
-stay on-demand (a single ticker is fast). Locally, `LIVE_SCREEN` is True so the
-screener pulls live as usual.
+False) the app **serves that committed file**, so `/api/screen` returns in well
+under a second and never runs the live pull. Each Action commit redeploys Vercel
+with fresh data. Per-stock detail pages stay on-demand (a single ticker is fast).
+Locally, `LIVE_SCREEN` is True so the screener pulls live as usual.
 
-To refresh manually: **Actions tab → Precompute screen → Run workflow**. Schedule
-is weekday mornings and after the US close.
+**Refresh: automatic twice a day, plus on demand.** The Action runs on a schedule
+(12:00 and 22:00 UTC on weekdays — pre-open and after the US close), and the app
+picks up each new publish on its own: a browser whose cached screen has aged past
+an hour quietly re-checks on load and adopts anything newer.
+
+**↻ Refresh data** works on top of that. Locally it just pulls live. On Vercel it
+can't (that's the 25s pull the precompute exists to avoid), so it does two things:
+serves the newest published screen immediately, then asks the same Action for an
+off-schedule pull and polls until that commit redeploys — a few minutes, with the
+current data on screen the whole time. Triggering the Action needs a GitHub token:
+
+```powershell
+# Fine-grained PAT on the signal-sift repo, Actions: read & write
+vercel env add SIGNALSIFT_GH_TOKEN     # or add it in the Vercel dashboard
+```
+
+Without the token nothing breaks — Refresh still serves the latest published
+screen and says so; it just can't pull off-schedule. You can always run one by
+hand: **Actions tab → Precompute screen → Run workflow**.
 
 ## Using the dashboard
 
@@ -147,7 +165,9 @@ is weekday mornings and after the US close.
 - **Sort by** — any window's return or the stall score; **Order** flips best/worst first.
 - **Sector** — narrow to one GICS sector (or click a bar in the Sector overview).
 - **Growth line** — the return threshold that separates growing from stalled.
-- **↻ Refresh data** — re-pull prices from Yahoo (first run of the day is slowest).
+- **↻ Refresh data** — get the newest prices. Locally that's a live Yahoo pull; on
+  the deployed app it loads the latest published screen instantly, then runs an
+  off-schedule precompute in the background (a few minutes).
 - Click a row → side drawer with the "why" bullets, analyst targets, and filings,
   and an **Open full pitchbook ↗** button.
 

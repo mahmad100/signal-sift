@@ -4,7 +4,7 @@ import os
 from flask import Flask, jsonify, render_template, request
 
 import config
-from . import analysts, cache, company, edgar, screener
+from . import analysts, cache, company, edgar, ghactions, screener
 
 app = Flask(
     __name__,
@@ -53,6 +53,11 @@ def api_screen():
     return jsonify({
         "generated_at": payload["generated_at"],
         "cache_age_seconds": cache.age_seconds("screen_latest"),
+        # False on serverless: this process serves the committed precompute and a
+        # Refresh has to go through the Action, so the client polls instead of
+        # expecting new prices in the response. See /api/refresh.
+        "live_screen": config.LIVE_SCREEN,
+        "can_trigger_refresh": ghactions.available(),
         "windows": payload["windows"],
         "benchmark": payload["benchmark"],
         "benchmark_returns": payload["benchmark_returns"],
@@ -74,6 +79,19 @@ def api_sectors():
     over = request.args.get("over", "1Y")
     stats = screener.sector_stats(payload, over=over, ceiling=_ceiling_arg())
     return jsonify(stats)
+
+
+@app.route("/api/refresh", methods=["POST"])
+def api_refresh():
+    """Ask the precompute Action for an off-schedule pull (serverless Refresh).
+
+    Locally there's nothing to queue — the Refresh button pulls live itself.
+    """
+    if config.LIVE_SCREEN:
+        return jsonify({"queued": False, "live": True,
+                        "message": "Local server pulls live directly."})
+    ok, message = ghactions.dispatch()
+    return jsonify({"queued": ok, "live": False, "message": message}), (200 if ok else 503)
 
 
 @app.route("/api/detail/<ticker>")

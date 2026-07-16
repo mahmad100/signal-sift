@@ -24,6 +24,7 @@ Signal Sift/
 │   ├── news.py                # recent headlines + naive sentiment tag
 │   ├── fundamentals.py        # income/cash-flow/balance-sheet (30-day cache)
 │   ├── company.py             # full detail/pitchbook profile (assembles everything)
+│   ├── ghactions.py           # fire the precompute Action (serverless manual Refresh)
 │   └── cache.py               # TTL + schema-versioned JSON file cache
 ├── templates/{index.html, company.html}   # index opens with the #ss-intro splash overlay
 ├── static/
@@ -78,17 +79,27 @@ caches on a shape change (keeps filters + theme).
 Building the screen is a ~25s pull of ~5y prices for 500 names — too slow for a serverless
 cold start. So:
 - `config.SERVERLESS` (Vercel/Lambda) ⇒ `DATA_DIR=/tmp/...` and `LIVE_SCREEN=False`.
-- With `LIVE_SCREEN` off, **normal loads** serve the committed `data/precomputed_screen.json`
-  (instant cold starts). A **Refresh** (`force=True`) does an on-demand live *price* pull
-  (`_live_screen`) and recomputes returns + weights, reusing the implied share counts
-  recovered from the precompute (`_shares_from_rows`) so it skips the slow per-name
-  market-cap fetch and stays within the 60s function budget. Any failure/timeout falls
-  back to the committed file — a Refresh never leaves the app empty.
-- The **precompute Action** (schedule + manual) runs the full pull (incl. fresh share
-  counts) on a GitHub runner and commits the JSON; that push redeploys Vercel. Share
-  counts move ~quarterly, so serving day-to-day weight changes from live prices × the
-  committed shares is accurate between Action runs.
+- With `LIVE_SCREEN` off, **every** request serves the committed
+  `data/precomputed_screen.json` — `run_screen(force=True)` only bypasses the 6h `/tmp`
+  cache and re-reads the file. `_live_screen` is never called in a serverless request.
+- The **precompute Action** (schedule + `workflow_dispatch`) runs the full pull on a
+  GitHub runner and commits the JSON; that push redeploys Vercel.
 - Locally `LIVE_SCREEN=True`, so dev pulls fully live (and fetches share counts) as normal.
+
+### Refresh (why it works this way)
+An earlier design had a serverless Refresh do an on-demand live *price* pull, reusing the
+precompute's share counts to skip the market-cap fetch. **It didn't work** — even the
+price-only pull for 500 names blew the function budget, so `?refresh=1` hung ~40s and
+died, and since Refresh was the *only* thing that replaced the browser's `localStorage`
+copy, the app could sit on day-old data indefinitely. Don't reintroduce it. Instead:
+- **Automatic:** the Action publishes twice a day, and `freshenIfStale()` (`app.js`) makes
+  clients adopt it — a cached screen older than `BASE_STALE_MS` (1h) triggers a background
+  re-check on load, un-awaited so the cached copy still paints instantly.
+- **Manual:** `POST /api/refresh` → `ghactions.dispatch()` fires the same Action via the
+  GitHub API (needs `SIGNALSIFT_GH_TOKEN`, `actions: write`; degrades to a plain message
+  without one). `pullFresh()` in `app.js` then polls `fetchBase(true)` every 15s for up to
+  6 min, swapping in the data when `generated_at` changes. `/api/screen` advertises
+  `live_screen` + `can_trigger_refresh` so the client knows which mode it's in.
 
 ## Frontend gotchas (the ones that bite)
 - **Global-scope sharing:** `company.js` and `app.js` are plain `<script>`s sharing the

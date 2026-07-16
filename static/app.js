@@ -113,11 +113,14 @@ async function fetchBase(force = false) {
       universe_size: data.universe_size,
       evaluated: data.evaluated,
       sectors: data.sectors,
+      live_screen: data.live_screen,
+      can_trigger_refresh: data.can_trigger_refresh,
     },
     ts: Date.now(),
   };
   WINDOWS = data.windows || WINDOWS;
   saveBase();
+  return data.generated_at;
 }
 
 // ---------------- Client-side classification ----------------
@@ -778,6 +781,83 @@ function setMeta() {
     `<span class="na">cached ${fmtAge(age)} · pulled ${m.generated_at || "?"}</span>`;
 }
 
+// ---------------- Refresh ----------------
+// How long to wait for an Action-driven pull: the run itself is ~2-3 min, plus
+// Vercel's redeploy of the resulting commit.
+const REFRESH_POLL_MS = 15000;
+const REFRESH_WAIT_MS = 6 * 60 * 1000;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function redrawAll() {
+  setMeta();
+  renderStocks();
+  if (State.active === "sectors") renderSectors();
+  if (State.active === "weights") renderWeights();
+  if (State.active === "watchlist") renderWatchlist();
+}
+
+// Ask the precompute Action for an off-schedule pull, then poll until its commit
+// deploys. `published` is the generated_at we're already showing — new data is
+// simply a generated_at that differs from it.
+async function pullFresh(published) {
+  const showing = `Showing data pulled ${esc(published || "?")}`;
+  if (!State.base.meta.can_trigger_refresh) {
+    $("status-line").innerHTML =
+      `${showing} — the newest published. On-demand pulls are off ` +
+      `(no GitHub token on the server); the next scheduled run will bring more.`;
+    return;
+  }
+
+  let info;
+  try {
+    info = await (await fetch("/api/refresh", { method: "POST" })).json();
+  } catch (e) {
+    info = { queued: false, message: "Couldn't reach the server." };
+  }
+  if (!info.queued) {
+    $("status-line").innerHTML =
+      `<span class="ret-down">Couldn't start a fresh pull.</span> ` +
+      `${esc(info.message || "")} ${showing}.`;
+    return;
+  }
+
+  const started = Date.now();
+  const deadline = started + REFRESH_WAIT_MS;
+  while (Date.now() < deadline) {
+    const mins = Math.round((Date.now() - started) / 60000);
+    $("status-line").innerHTML =
+      `Pulling fresh prices on GitHub (~2-3 min${mins ? `, ${mins}m elapsed` : ""})… ` +
+      `${showing} until it lands.`;
+    await sleep(REFRESH_POLL_MS);
+    let now = null;
+    try { now = await fetchBase(true); } catch (e) { continue; }
+    if (now && now !== published) {
+      redrawAll();
+      $("status-line").innerHTML =
+        `<span class="ret-up">Fresh data in</span> — pulled ${esc(now)}.`;
+      return;
+    }
+  }
+  $("status-line").innerHTML =
+    `The pull is still running. ${showing} — hit Refresh again shortly to pick it up.`;
+}
+
+// The Action publishes a fresh screen twice a day, but a browser holding a cached
+// copy in localStorage would never see it — before this, only the Refresh button
+// replaced that copy, so a stale cache + a failing Refresh meant permanently old
+// data. Once our copy ages past this, re-check in the background on load and adopt
+// anything newer. Cheap: the server just reads the committed file (~1s).
+const BASE_STALE_MS = 60 * 60 * 1000;
+
+async function freshenIfStale() {
+  if (State.base.ts && Date.now() - State.base.ts < BASE_STALE_MS) return;
+  const before = State.base.meta.generated_at;
+  let now;
+  try { now = await fetchBase(false); } catch (e) { return; }
+  if (now !== before) redrawAll();
+  else setMeta();   // nothing new, but the "cached … old" label should still reset
+}
+
 async function boot() {
   purgeStaleCaches();
   loadFilters();
@@ -793,6 +873,7 @@ async function boot() {
     WINDOWS = cached.meta.windows || WINDOWS;
     setMeta();
     renderStocks();
+    freshenIfStale();   // deliberately not awaited: paint now, adopt newer data when it lands
   } else {
     $("status-line").textContent = "Fetching the S&P 500 (first run pulls ~500 names)…";
     await fetchBase(false);
@@ -900,22 +981,36 @@ async function boot() {
       });
   });
 
-  // Refresh: force server re-pull + drop all local caches.
+  // Refresh: drop the local caches and get the newest data there is.
+  //
+  // Locally the server pulls live in-request. On the deployed (serverless) app it
+  // can't — 500 names × 5y of prices takes ~25s and blows the function budget, which
+  // is the whole reason the precompute Action exists. So there we do it in two beats:
+  // take whatever the Action last published (instant, always works — this alone
+  // un-sticks a browser holding a stale localStorage copy), then ask the Action for
+  // an off-schedule pull and poll until its commit redeploys with new prices.
   $("refresh").addEventListener("click", async () => {
     $("refresh").disabled = true;
     $("refresh").textContent = "↻ Refreshing…";
-    $("status-line").textContent = "Re-pulling prices from Yahoo (this can take up to a minute)…";
+    $("status-line").textContent = "Fetching the latest data…";
     clearDetailCache();
     try {
-      await fetchBase(true);
-      setMeta();
-      renderStocks();
-      if (State.active === "sectors") renderSectors();
-      if (State.active === "weights") renderWeights();
-      if (State.active === "watchlist") renderWatchlist();
+      const before = State.base && State.base.meta && State.base.meta.generated_at;
+      const published = await fetchBase(true);
+      redrawAll();
+
+      if (State.base.meta.live_screen) {
+        $("status-line").textContent = "";
+        return;
+      }
+      if (published !== before) {
+        $("status-line").innerHTML =
+          `Updated to the latest published data (pulled ${esc(published)}).`;
+      }
+      await pullFresh(published);
     } catch (e) {
       $("status-line").innerHTML =
-        `<span class="ret-down">Refresh failed or timed out.</span> ` +
+        `<span class="ret-down">Refresh failed.</span> ` +
         `Showing the last data — try again in a moment.`;
     } finally {
       $("refresh").disabled = false;
