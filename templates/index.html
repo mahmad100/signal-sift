@@ -43,7 +43,7 @@
       var caret = document.getElementById("ssCaret");
       var sub = document.getElementById("ssSub");
       var name = "Signal Sift";
-      var HOLD_MS = 600;                      // beat to read the wordmark before it clears itself
+      var HOLD_MS = 120;                      // beat to read the wordmark before it clears itself
       var timer = null, finished = false, gone = false;
 
       function reveal() {
@@ -60,7 +60,7 @@
         if (timer) { clearTimeout(timer); timer = null; }
         overlay.classList.add("gone");
         document.removeEventListener("keydown", onKey, true);
-        setTimeout(function () { overlay.style.display = "none"; }, 560);
+        setTimeout(function () { overlay.style.display = "none"; }, 320);  // matches .ss-intro's fade
       }
       function onKey(e) {                      // while the intro is up, it owns the keyboard
         if (gone) return;
@@ -74,12 +74,12 @@
       else {
         var i = 0;
         function type() {
-          if (i >= name.length) { timer = setTimeout(reveal, 280); return; }
+          if (i >= name.length) { timer = setTimeout(reveal, 60); return; }
           typed.textContent += name[i++];
-          timer = setTimeout(type, name[i - 1] === " " ? 90 : 50 + Math.random() * 28);
+          timer = setTimeout(type, name[i - 1] === " " ? 40 : 22 + Math.random() * 10);
         }
-        setTimeout(function () { mark.classList.add("load"); }, 300);  // ring spins + fills to half
-        timer = setTimeout(type, 1120);                                // then the name types
+        setTimeout(function () { mark.classList.add("load"); }, 150);  // ring spins + fills to half
+        timer = setTimeout(type, 520);                                 // then the name types
       }
 
       // No visible control, but a click or key still skips ahead for the impatient.
