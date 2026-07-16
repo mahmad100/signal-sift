@@ -323,23 +323,23 @@ tbody tr.rowsel { background: var(--panel2); box-shadow: inset 3px 0 0 var(--acc
   position: relative; flex: none; width: var(--sz); height: var(--sz);
   border-radius: 50%; overflow: hidden;
   border: 3px solid var(--accent); box-shadow: 0 0 22px -2px var(--accent);
-  opacity: 0; animation: ss-appear 150ms ease-out forwards;
+  opacity: 0; animation: ss-appear 220ms ease-out forwards;
 }
 @keyframes ss-appear { from { opacity: 0; transform: scale(.6); } to { opacity: 1; transform: none; } }
 .ss-sweep { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
 .ss-prog { fill: none; stroke: var(--accent); stroke-width: 19; stroke-dasharray: 56.549; stroke-dashoffset: 56.549; }
 /* Kept in step with index.html's inline timings: .load lands as ss-appear ends
-   (150ms), the ring runs 350ms, and the name starts typing just after (520ms). */
-.ss-mark.load .ss-sweep { animation: ss-spin 350ms cubic-bezier(.3,.45,.2,1) forwards; }
-.ss-mark.load .ss-prog  { animation: ss-fill 350ms cubic-bezier(.3,.45,.2,1) forwards; }
+   (220ms), the ring runs 550ms, and the name starts typing just after (780ms). */
+.ss-mark.load .ss-sweep { animation: ss-spin 550ms cubic-bezier(.3,.45,.2,1) forwards; }
+.ss-mark.load .ss-prog  { animation: ss-fill 550ms cubic-bezier(.3,.45,.2,1) forwards; }
 @keyframes ss-spin { from { transform: rotate(-450deg); } to { transform: rotate(-90deg); } }
 @keyframes ss-fill { from { stroke-dashoffset: 56.549; } to { stroke-dashoffset: 28.274; } }
 .ss-word { display: inline-flex; align-items: center; margin: 0; color: var(--text); font-weight: 600; letter-spacing: .5px; font-size: clamp(30px, 8vw, 62px); white-space: nowrap; }
 .ss-caret { display: inline-block; width: 2px; height: 1em; margin-left: 3px; background: var(--accent); vertical-align: -.08em; animation: ss-blink 1s steps(1) infinite; }
-.ss-caret.done { animation: ss-fadeout 160ms ease forwards; }
+.ss-caret.done { animation: ss-fadeout 200ms ease forwards; }
 @keyframes ss-blink { 50% { opacity: 0; } }
 @keyframes ss-fadeout { to { opacity: 0; } }
-.ss-sub { display: flex; flex-direction: column; align-items: center; gap: 16px; opacity: 0; transform: translateY(6px); transition: opacity .2s ease, transform .2s ease; }
+.ss-sub { display: flex; flex-direction: column; align-items: center; gap: 16px; opacity: 0; transform: translateY(6px); transition: opacity .25s ease, transform .25s ease; }
 .ss-sub.on { opacity: 1; transform: none; }
 .ss-tag { margin: 0; color: var(--muted); font-size: clamp(11px, 2.6vw, 13px); letter-spacing: 3px; text-transform: uppercase; }
 @media (prefers-reduced-motion: reduce) {
