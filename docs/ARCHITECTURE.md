@@ -114,6 +114,13 @@ copy, the app could sit on day-old data indefinitely. Don't reintroduce it. Inst
   switch re-renders so SVG colors follow.
 - **yfinance sector label** differs from the GICS label used in the screen — peers match on
   the screen's sector, not `profile.identity.sector`.
+- **The intro splash spans two files.** Its markup + inline IIFE live in `index.html`; its
+  animation lives in `styles.css` (`.ss-*`). The two are one sequence — the script adds
+  `.load` exactly as the CSS `ss-appear` ends, and starts typing just after `ss-spin`/
+  `ss-fill` settle — so a timing change in one needs the matching change in the other, and
+  `.ss-sub` / `.ss-caret.done` / `.ss-intro`'s fade must fit inside the total or they
+  outlive the overlay. It's gated once-per-tab on `sessionStorage["ss-intro-seen"]`, checked
+  before first paint so a skipped intro never flashes.
 
 ## Testing without a browser
 Chrome extension has been disconnected all project — no screenshots. Verify frontend by
