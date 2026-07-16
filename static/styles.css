@@ -309,7 +309,7 @@ tbody tr.rowsel { background: var(--panel2); box-shadow: inset 3px 0 0 var(--acc
 .bchk.off { color: var(--muted); }
 #wtRows tr:hover .bchk.off { border-color: var(--accent); color: var(--accent); }
 
-/* ===== Intro splash overlay (front door — plays on every load) ===== */
+/* ===== Intro splash overlay (first arrival in a tab; auto-dismisses) ===== */
 .ss-intro {
   position: fixed; inset: 0; z-index: 300;
   background: radial-gradient(70% 60% at 50% 46%, var(--panel2) 0%, var(--bg) 60%, var(--bg) 100%);
@@ -340,9 +340,6 @@ tbody tr.rowsel { background: var(--panel2); box-shadow: inset 3px 0 0 var(--acc
 .ss-sub { display: flex; flex-direction: column; align-items: center; gap: 16px; opacity: 0; transform: translateY(6px); transition: opacity .7s ease, transform .7s ease; }
 .ss-sub.on { opacity: 1; transform: none; }
 .ss-tag { margin: 0; color: var(--muted); font-size: clamp(11px, 2.6vw, 13px); letter-spacing: 3px; text-transform: uppercase; }
-.ss-enter { background: transparent; color: var(--text); font: inherit; font-size: 14px; letter-spacing: 1px; cursor: pointer; padding: 9px 20px; border: 1px solid var(--line); border-radius: 999px; transition: border-color .15s, color .15s; }
-.ss-enter:hover, .ss-enter:focus-visible { border-color: var(--accent); color: var(--accent); outline: none; filter: none; }
-.ss-arw { color: var(--accent); }
 @media (prefers-reduced-motion: reduce) {
   .ss-mark { animation: none; opacity: 1; }
   .ss-sweep { animation: none !important; }

@@ -26,7 +26,7 @@ Signal Sift/
 │   ├── company.py             # full detail/pitchbook profile (assembles everything)
 │   ├── ghactions.py           # fire the precompute Action (serverless manual Refresh)
 │   └── cache.py               # TTL + schema-versioned JSON file cache
-├── templates/{index.html, company.html}   # index opens with the #ss-intro splash overlay
+├── templates/{index.html, company.html}   # index opens with the #ss-intro splash (once per tab)
 ├── static/
 │   ├── styles.css             # themes (CSS vars) + all component styles
 │   ├── company.js             # buildProfileHTML() + all SVG chart helpers (SHARED)
