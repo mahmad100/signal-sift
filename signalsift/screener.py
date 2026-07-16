@@ -28,25 +28,11 @@ def _load_precomputed():
         return None
 
 
-def _shares_from_rows(rows) -> dict:
-    """Recover implied share counts from a built screen (market_cap / price).
-
-    Lets a serverless Refresh recompute weights from a live price pull without
-    re-running the slow per-name market-cap fetch: share counts move ~quarterly,
-    so the ones baked into the committed precompute are fine to reuse.
-    """
-    out = {}
-    for r in rows or []:
-        mc, px = r.get("market_cap"), r.get("price")
-        if mc and px:
-            out[r["ticker"]] = mc / px
-    return out
-
-
-def _live_screen(shares_map=None):
+def _live_screen():
     """Run the live pull and build the full payload, or None if the pull is empty.
 
-    shares_map : implied shares to weight with. If None, fetch them (slow, cached).
+    Only ever called where there's time for it: locally, and on the GitHub runner
+    that builds the precompute. Never inside a serverless request — see run_screen.
     """
     consts = universe.get_constituents()
     tickers = [c["ticker"] for c in consts]
@@ -93,9 +79,8 @@ def _live_screen(shares_map=None):
         return None
 
     # Approximate index weights: implied shares × current price, so market cap
-    # tracks the latest price. Reuse provided shares (serverless Refresh) or fetch.
-    if shares_map is None:
-        shares_map = marketcaps.get_shares([r["ticker"] for r in rows])
+    # tracks the latest price.
+    shares_map = marketcaps.get_shares([r["ticker"] for r in rows])
     for r in rows:
         s = shares_map.get(r["ticker"])
         r["market_cap"] = int(round(s * r["price"])) if s and r["price"] else None
@@ -116,10 +101,11 @@ def run_screen(force: bool = False) -> dict:
     """Return the screen payload.
 
     Precedence: fresh short-lived cache → serverless serves the committed precompute
-    for normal loads (instant cold starts). A serverless **Refresh** (force) does a
-    live *price* pull and recomputes returns + weights, reusing the share counts
-    baked into the precompute so it stays within the function timeout; any failure
-    falls back to the committed file. Locally, every pull is fully live.
+    → live pull. On serverless a **Refresh** (force) only bypasses the short-lived
+    cache and re-reads the committed file, so it picks up whatever the precompute
+    Action last published and can never time out. Getting genuinely *new* prices
+    there means running the Action (see ghactions.dispatch + /api/refresh), not
+    pulling in-request. Locally, every pull is fully live.
     """
     if not force:
         cached = cache.get(_CACHE_KEY, config.SCREEN_TTL)
@@ -128,16 +114,6 @@ def run_screen(force: bool = False) -> dict:
 
     if not config.LIVE_SCREEN:
         pre = _load_precomputed()
-        if force and pre:
-            # On-demand live price pull, reusing the precompute's share counts.
-            try:
-                fresh = _live_screen(shares_map=_shares_from_rows(pre.get("rows", [])))
-            except Exception:
-                fresh = None
-            if fresh:
-                cache.set(_CACHE_KEY, fresh)
-                return fresh
-            # Live pull failed or timed out — serve the committed file instead.
         if pre:
             cache.set(_CACHE_KEY, pre)
             return pre

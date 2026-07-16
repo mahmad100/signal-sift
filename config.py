@@ -25,6 +25,16 @@ PRECOMPUTED_SCREEN = os.path.join(BASE_DIR, "data", "precomputed_screen.json")
 # cold start (or a Refresh) never risks the function timeout — it serves precompute.
 LIVE_SCREEN = not SERVERLESS
 
+# On-demand refresh (serverless only). The ~25s live pull for 500 names can't run
+# inside a Vercel request, so the Refresh button asks the same precompute Action
+# the schedule uses to rebuild the screen; its commit redeploys with fresh data.
+# Needs a GitHub token with `actions: write` on the repo — without one, Refresh
+# still serves the latest committed screen, it just can't pull off-schedule.
+GH_REPO = os.environ.get("SIGNALSIFT_GH_REPO", "mahmad100/signal-sift")
+GH_TOKEN = os.environ.get("SIGNALSIFT_GH_TOKEN", "")
+GH_WORKFLOW = "precompute.yml"
+GH_REF = "main"
+
 # SEC requires a descriptive User-Agent with contact info. Override via env var.
 SEC_USER_AGENT = os.environ.get(
     "SIGNALSIFT_SEC_UA",
