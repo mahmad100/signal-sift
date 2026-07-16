@@ -32,13 +32,12 @@ re-rated yet. Signal Sift finds them and points you at the primary sources.
   return?" Weights are a full-market-cap approximation (not float-adjusted).
 - **Jump anywhere**: Ctrl-K / `/` command palette to any ticker, keyboard row
   navigation, and deep links (`#/company/NVDA`, `#/weights`) that survive refresh.
-- **Animated intro** when you arrive: the app opens with a full-screen splash — the
-  ◑ mark spins in and fills to half like a loader, then "Signal Sift" types out —
-  which then clears itself and reveals the dashboard. No button to press. It greets
-  a *fresh arrival* in a tab (a link, a search result, a new tab) and stays out of
-  the way after that: no replay on refresh, or when you come back to the main page
-  from a company page. Themed to your palette. (It's an overlay in `index.html`,
-  not a separate page.)
+- **Animated intro** when you arrive: a ~1.5s full-screen splash — the ◑ mark spins
+  in and fills to half like a loader, then "Signal Sift" types out — which clears
+  itself and reveals the dashboard. No button to press. It greets a *fresh arrival*
+  in a tab (a link, a search result, a new tab) and stays out of the way after that:
+  no replay on refresh, or when you come back to the main page from a company page.
+  Themed to your palette. (It's an overlay in `index.html`, not a separate page.)
 - **Flags "stalled" names** — return at or below a growth line you choose (default +5%).
 - **Ranks by stall score** (how many of the 7 windows are stalled) and relative
   under-performance vs. SPY.
@@ -149,12 +148,21 @@ an hour quietly re-checks on load and adopts anything newer.
 can't (that's the 25s pull the precompute exists to avoid), so it does two things:
 serves the newest published screen immediately, then asks the same Action for an
 off-schedule pull and polls until that commit redeploys — a few minutes, with the
-current data on screen the whole time. Triggering the Action needs a GitHub token:
+current data on screen the whole time (measured end-to-end: **4m46s** from click to
+fresh data). Triggering the Action needs a GitHub token — already configured on the
+live deployment; for a new one:
 
 ```powershell
-# Fine-grained PAT on the signal-sift repo, Actions: read & write
-vercel env add SIGNALSIFT_GH_TOKEN     # or add it in the Vercel dashboard
+# Fine-grained PAT: repo access = signal-sift, Repository permissions -> Actions: read & write
+vercel env add SIGNALSIFT_GH_TOKEN     # or add it in the Vercel dashboard, then redeploy
 ```
+
+Two things that will bite: the token must be scoped to **the repo itself** (a
+"Public repositories" token can't see a private repo — the API 404s), and it needs
+an explicit **Actions: read & write** permission (a token with no permissions also
+404s). `GET /api/screen` reports `can_trigger_refresh` so you can check from outside
+whether the server actually has a working token. Env vars only take effect on a new
+deployment.
 
 Without the token nothing breaks — Refresh still serves the latest published
 screen and says so; it just can't pull off-schedule. You can always run one by
