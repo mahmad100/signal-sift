@@ -32,10 +32,13 @@ re-rated yet. Signal Sift finds them and points you at the primary sources.
   return?" Weights are a full-market-cap approximation (not float-adjusted).
 - **Jump anywhere**: Ctrl-K / `/` command palette to any ticker, keyboard row
   navigation, and deep links (`#/company/NVDA`, `#/weights`) that survive refresh.
-- **Animated intro** on every visit: the app opens with a full-screen splash — the
+- **Animated intro** when you arrive: the app opens with a full-screen splash — the
   ◑ mark spins in and fills to half like a loader, then "Signal Sift" types out —
-  and reveals the dashboard when you hit **Enter →**. Themed to your palette; plays
-  on every load and refresh. (It's an overlay in `index.html`, not a separate page.)
+  which then clears itself and reveals the dashboard. No button to press. It greets
+  a *fresh arrival* in a tab (a link, a search result, a new tab) and stays out of
+  the way after that: no replay on refresh, or when you come back to the main page
+  from a company page. Themed to your palette. (It's an overlay in `index.html`,
+  not a separate page.)
 - **Flags "stalled" names** — return at or below a growth line you choose (default +5%).
 - **Ranks by stall score** (how many of the 7 windows are stalled) and relative
   under-performance vs. SPY.
