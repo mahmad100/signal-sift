@@ -323,13 +323,15 @@ tbody tr.rowsel { background: var(--panel2); box-shadow: inset 3px 0 0 var(--acc
   position: relative; flex: none; width: var(--sz); height: var(--sz);
   border-radius: 50%; overflow: hidden;
   border: 3px solid var(--accent); box-shadow: 0 0 22px -2px var(--accent);
-  opacity: 0; animation: ss-appear 520ms ease-out forwards;
+  opacity: 0; animation: ss-appear 300ms ease-out forwards;
 }
 @keyframes ss-appear { from { opacity: 0; transform: scale(.6); } to { opacity: 1; transform: none; } }
 .ss-sweep { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
 .ss-prog { fill: none; stroke: var(--accent); stroke-width: 19; stroke-dasharray: 56.549; stroke-dashoffset: 56.549; }
-.ss-mark.load .ss-sweep { animation: ss-spin 1300ms cubic-bezier(.3,.45,.2,1) forwards; }
-.ss-mark.load .ss-prog  { animation: ss-fill 1300ms cubic-bezier(.3,.45,.2,1) forwards; }
+/* Kept in step with index.html's inline timings: .load lands as ss-appear ends
+   (300ms), the ring runs 800ms, and the name starts typing just after (1120ms). */
+.ss-mark.load .ss-sweep { animation: ss-spin 800ms cubic-bezier(.3,.45,.2,1) forwards; }
+.ss-mark.load .ss-prog  { animation: ss-fill 800ms cubic-bezier(.3,.45,.2,1) forwards; }
 @keyframes ss-spin { from { transform: rotate(-450deg); } to { transform: rotate(-90deg); } }
 @keyframes ss-fill { from { stroke-dashoffset: 56.549; } to { stroke-dashoffset: 28.274; } }
 .ss-word { display: inline-flex; align-items: center; margin: 0; color: var(--text); font-weight: 600; letter-spacing: .5px; font-size: clamp(30px, 8vw, 62px); white-space: nowrap; }
