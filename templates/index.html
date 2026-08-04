@@ -93,7 +93,7 @@
       <span class="logo">◑</span>
       <div>
         <h1>Signal Sift</h1>
-        <p class="tag">S&amp;P 500 growth radar — who's moving, who's stalled, and why.</p>
+        <p class="tag">S&amp;P 500 growth radar — who's up, who's down, over every timeframe.</p>
       </div>
     </div>
     <div class="topright">
@@ -131,11 +131,11 @@
         <label>Show
           <select id="status">
             <option value="all" selected>All names</option>
-            <option value="growing">Growing only</option>
-            <option value="stalled">Stalled only</option>
+            <option value="growing">Up only ▲</option>
+            <option value="stalled">Down only ▼</option>
           </select>
         </label>
-        <label>Growth over
+        <label>Up/down over
           <select id="over">
             <option value="1D">1 day</option><option value="1W">1 week</option>
             <option value="1M">1 month</option><option value="3M">3 months</option>
@@ -147,13 +147,13 @@
         </label>
         <label>Sort by
           <select id="sort">
-            <option value="">Growth window</option>
+            <option value="">Up/down window</option>
             <option value="1D">1D</option><option value="1W">1W</option>
             <option value="1M">1M</option><option value="3M">3M</option>
             <option value="6M">6M</option><option value="9M">9M</option>
             <option value="1Y">1Y</option><option value="2Y">2Y</option>
             <option value="3Y">3Y</option><option value="4Y">4Y</option>
-            <option value="5Y">5Y</option><option value="stall">Stall score</option>
+            <option value="5Y">5Y</option><option value="stall">Down count</option>
           </select>
         </label>
         <label>Order
@@ -165,13 +165,14 @@
         <label>Sector
           <select id="sector"><option value="">— all —</option></select>
         </label>
-        <label>Growth line
+        <label>Counts as up above
           <select id="ceiling">
             <option value="0.0">0%</option><option value="0.05" selected>+5%</option><option value="0.10">+10%</option>
           </select>
         </label>
         <input id="search" class="search" placeholder="Filter by ticker / name…" autocomplete="off">
       </div>
+      <div class="hint colnote">Every % column is a trailing return ending today — <b>1Y</b> means "bought a year ago, held to now". They never change. <b>Up/down over</b> only picks which one of them decides the ▲/▼ verdict, the Show filter and the sort.</div>
       <div id="status-line" class="status"></div>
       <div class="tablewrap">
         <table id="grid"><thead><tr id="headRow"></tr></thead><tbody id="rows"></tbody></table>
@@ -181,7 +182,7 @@
     <!-- ============ WATCHLIST ============ -->
     <section id="view-watchlist" class="view hidden">
       <div class="controls">
-        <label>Growth over
+        <label>Up/down over
           <select id="wlOver">
             <option value="1D">1 day</option><option value="1W">1 week</option>
             <option value="1M">1 month</option><option value="3M">3 months</option>

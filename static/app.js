@@ -168,7 +168,8 @@ function headHTML(over) {
   return `<th class="star-h"></th>` +
     fixed.map((h, i) => `<th${i >= 3 ? ' class="num"' : ""}>${h}</th>`).join("") +
     WINDOWS.map((w) => `<th class="num${w === over ? " refcol" : ""}">${w}</th>`).join("") +
-    `<th class="num">Status</th><th class="num">Stall</th>`;
+    `<th class="num">Verdict</th>` +
+    `<th class="num" title="How many of the ${WINDOWS.length} windows are below the line">Down</th>`;
 }
 
 function makeRow(r, over) {
@@ -176,15 +177,19 @@ function makeRow(r, over) {
   tr.dataset.tk = r.ticker;
   const sc = r._score;
   const badge = sc >= WINDOWS.length ? "s5" : sc >= WINDOWS.length - 1 ? "s4" : "";
-  const stat = r._growing ? `<span class="pill grow">▲ Growing</span>`
-                          : `<span class="pill stall">▼ Stalled</span>`;
+  const scTip = `Down over ${sc} of the ${WINDOWS.length} windows`;
+  // The window is baked into the pill on purpose: "Down" alone reads like a
+  // property of the stock, when it's only ever a verdict about one window.
+  const stat = r._growing ? `<span class="pill grow">▲ Up ${over}</span>`
+                          : `<span class="pill stall">▼ Down ${over}</span>`;
   const on = isWatched(r.ticker);
   tr.innerHTML =
     `<td class="starcell"><span class="star ${on ? "on" : "off"}" title="Watchlist">${on ? "★" : "☆"}</span></td>` +
     `<td class="tk">${r.ticker}</td><td>${esc(r.name)}</td><td>${esc(r.sector || "")}</td>` +
     `<td class="num">$${Number(r.price).toFixed(2)}</td>` +
     WINDOWS.map((w) => `<td class="num${w === over ? " refcol" : ""}">${pct(r.returns[w])}</td>`).join("") +
-    `<td class="num">${stat}</td><td class="num"><span class="badge ${badge}">${sc}</span></td>`;
+    `<td class="num">${stat}</td>` +
+    `<td class="num"><span class="badge ${badge}" title="${scTip}">${sc}</span></td>`;
   tr.onclick = () => openDetail(r.ticker);
   tr.querySelector(".star").onclick = (e) => { e.stopPropagation(); toggleWatch(r.ticker); };
   return tr;
@@ -210,9 +215,9 @@ function renderStocks() {
   const stall = scope.filter((r) => r.returns[over] != null && !isGrowing(r, over, ceil)).length;
 
   $("status-line").innerHTML =
-    `Showing <b>${rows.length}</b> of ${scope.length} · over ${over}: ` +
-    `<span class="ret-up">${grow} growing</span> · <span class="ret-down">${stall} stalled</span> ` +
-    `(line ${(ceil * 100).toFixed(0)}%).`;
+    `Showing <b>${rows.length}</b> of ${scope.length} · measured over <b>${over}</b>: ` +
+    `<span class="ret-up">${grow} up</span> · <span class="ret-down">${stall} down</span> ` +
+    `(up = above ${(ceil * 100).toFixed(0)}%).`;
 
   const tb = $("rows");
   tb.innerHTML = "";
@@ -267,8 +272,8 @@ function renderWatchlist() {
 
   const grow = rows.filter((r) => r._growing).length;
   $("wl-status").innerHTML =
-    `<b>${rows.length}</b> watched · over ${over}: ` +
-    `<span class="ret-up">${grow} growing</span> · <span class="ret-down">${rows.length - grow} stalled</span>.`;
+    `<b>${rows.length}</b> watched · measured over <b>${over}</b>: ` +
+    `<span class="ret-up">${grow} up</span> · <span class="ret-down">${rows.length - grow} down</span>.`;
 
   const tb = $("wlRows");
   tb.innerHTML = "";
@@ -336,7 +341,7 @@ function renderSectors() {
   }).join("");
   $("sectorChart").innerHTML =
     `<div class="sechead"><span>Sector (n)</span>` +
-    `<span class="secmid">◀ stalled · median ${over} · growing ▶${benchOver != null ? " · SPY " : ""}${benchOver != null ? pct(benchOver) : ""}</span>` +
+    `<span class="secmid">◀ down · median ${over} · up ▶${benchOver != null ? " · SPY " : ""}${benchOver != null ? pct(benchOver) : ""}</span>` +
     `<span>median</span><span>mix</span></div>` + chart;
 
   // Heatmap table: sectors × windows.
