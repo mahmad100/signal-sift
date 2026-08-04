@@ -124,34 +124,59 @@ async function fetchBase(force = false) {
 }
 
 // ---------------- Client-side classification ----------------
-const ceilNum = () => parseFloat(State.filters.ceiling);
-function stallInfo(row, ceil) {
-  const stalled = WINDOWS.filter((w) => row.returns[w] != null && row.returns[w] <= ceil);
-  return { stalled, score: stalled.length };
-}
-function isGrowing(row, over, ceil) {
-  const v = row.returns[over];
-  return v != null && v > ceil;
+const SPY_LINE = "spy";
+const isSpyLine = () => State.filters.ceiling === SPY_LINE;
+
+// The bar a window has to clear to count as "up". Either a flat percentage, or
+// — on the benchmark line — SPY's own return over that same window, so the bar
+// moves per column instead of being one constant across all eleven. A flat 0%
+// is a near-meaningless test at 5Y, where SPY itself is up ~85%.
+function lineFor(w) {
+  if (!isSpyLine()) return parseFloat(State.filters.ceiling) || 0;
+  const b = (State.base && State.base.meta && State.base.meta.benchmark_returns) || {};
+  return b[w] == null ? null : b[w];
 }
 
-function decorate(r, over, ceil) {
-  const si = stallInfo(r, ceil);
+// true = up, false = down, null = unjudgeable (no price history that far back,
+// or no benchmark for this window). Callers must treat null as "not up" AND
+// "not down" — it must not fall into either bucket by default.
+function judge(row, w) {
+  const v = row.returns[w], line = lineFor(w);
+  return v == null || line == null ? null : v > line;
+}
+
+// How the current line reads in prose, for the summary lines.
+function lineLabel(w) {
+  if (!isSpyLine()) return `up = above ${(parseFloat(State.filters.ceiling) * 100).toFixed(0)}%`;
+  const l = lineFor(w);
+  return l == null ? "up = beat SPY, but SPY has no return for this window"
+                   : `up = beat SPY over ${w}, i.e. above ${(l * 100).toFixed(1)}%`;
+}
+
+function stallInfo(row) {
+  const stalled = WINDOWS.filter((w) => judge(row, w) === false);
+  return { stalled, score: stalled.length };
+}
+function isGrowing(row, over) { return judge(row, over) === true; }
+
+function decorate(r, over) {
+  const si = stallInfo(r);
   return { ...r, _stalled: si.stalled, _score: si.score,
-           _growing: isGrowing(r, over, ceil) };
+           _growing: isGrowing(r, over) };
 }
 
 function computeRows() {
-  const f = State.filters, ceil = ceilNum(), over = f.over;
+  const f = State.filters, over = f.over;
   const q = (f.search || "").trim().toLowerCase();
   let rows = State.base.rows.filter((r) => {
     if (f.sector && r.sector !== f.sector) return false;
     if (q && !(r.ticker.toLowerCase().includes(q) ||
                (r.name || "").toLowerCase().includes(q))) return false;
-    const grow = isGrowing(r, over, ceil);
-    if (f.status === "growing" && !grow) return false;
-    if (f.status === "stalled" && (r.returns[over] == null || grow)) return false;
+    const v = judge(r, over);
+    if (f.status === "growing" && v !== true) return false;
+    if (f.status === "stalled" && v !== false) return false;
     return true;
-  }).map((r) => decorate(r, over, ceil));
+  }).map((r) => decorate(r, over));
 
   const sort = f.sort || over;
   rows.sort((a, b) => {
@@ -209,15 +234,14 @@ function renderStocks() {
   }
 
   const rows = computeRows();
-  const ceil = ceilNum();
   const scope = State.base.rows.filter((r) => !f.sector || r.sector === f.sector);
-  const grow = scope.filter((r) => isGrowing(r, over, ceil)).length;
-  const stall = scope.filter((r) => r.returns[over] != null && !isGrowing(r, over, ceil)).length;
+  const grow = scope.filter((r) => judge(r, over) === true).length;
+  const stall = scope.filter((r) => judge(r, over) === false).length;
 
   $("status-line").innerHTML =
     `Showing <b>${rows.length}</b> of ${scope.length} · measured over <b>${over}</b>: ` +
     `<span class="ret-up">${grow} up</span> · <span class="ret-down">${stall} down</span> ` +
-    `(up = above ${(ceil * 100).toFixed(0)}%).`;
+    `(${lineLabel(over)}).`;
 
   const tb = $("rows");
   tb.innerHTML = "";
@@ -256,7 +280,7 @@ function updateWatchCount() {
 }
 
 function renderWatchlist() {
-  const over = State.wlOver, ceil = ceilNum();
+  const over = State.wlOver;
   $("wlHead").innerHTML = headHTML(over);
   const tickers = [...State.watchlist];
   const empty = tickers.length === 0;
@@ -267,13 +291,15 @@ function renderWatchlist() {
 
   const rows = State.base.rows
     .filter((r) => State.watchlist.has(r.ticker))
-    .map((r) => decorate(r, over, ceil))
+    .map((r) => decorate(r, over))
     .sort((a, b) => (b.returns[over] ?? -Infinity) - (a.returns[over] ?? -Infinity));
 
-  const grow = rows.filter((r) => r._growing).length;
+  const grow = rows.filter((r) => judge(r, over) === true).length;
+  const down = rows.filter((r) => judge(r, over) === false).length;
   $("wl-status").innerHTML =
     `<b>${rows.length}</b> watched · measured over <b>${over}</b>: ` +
-    `<span class="ret-up">${grow} up</span> · <span class="ret-down">${rows.length - grow} down</span>.`;
+    `<span class="ret-up">${grow} up</span> · <span class="ret-down">${down} down</span> ` +
+    `(${lineLabel(over)}).`;
 
   const tb = $("wlRows");
   tb.innerHTML = "";
@@ -284,7 +310,7 @@ function renderWatchlist() {
 }
 
 // ---------------- Sectors view ----------------
-function computeSectors(over, ceil) {
+function computeSectors(over) {
   const groups = {};
   State.base.rows.forEach((r) => {
     (groups[r.sector || "Unknown"] ||= []).push(r);
@@ -296,12 +322,14 @@ function computeSectors(over, ceil) {
       medByWin[w] = median(rows.map((r) => r.returns[w]).filter((v) => v != null));
     });
     const refs = rows.map((r) => r.returns[over]).filter((v) => v != null);
-    const growing = refs.filter((v) => v > ceil).length;
+    // Count over judgeable names only, so the up/down mix always sums to n.
+    const judged = rows.map((r) => judge(r, over)).filter((v) => v != null);
+    const growing = judged.filter(Boolean).length;
     const ranked = [...rows].sort((a, b) => (a.returns[over] ?? -Infinity) - (b.returns[over] ?? -Infinity));
     return {
       sector, count: rows.length, medByWin,
-      medOver: median(refs), growing, stalled: refs.length - growing,
-      pctGrowing: refs.length ? growing / refs.length : null,
+      medOver: median(refs), growing, stalled: judged.length - growing,
+      pctGrowing: judged.length ? growing / judged.length : null,
       best: ranked.length ? ranked[ranked.length - 1] : null,
       worst: ranked.length ? ranked[0] : null,
     };
@@ -319,8 +347,8 @@ function heatColor(v) {
 
 function renderSectors() {
   if (!State.base) return;
-  const over = State.secOver, ceil = ceilNum();
-  const { sectors, benchOver } = computeSectors(over, ceil);
+  const over = State.secOver;
+  const { sectors, benchOver } = computeSectors(over);
 
   const vals = sectors.map((s) => s.medOver).filter((v) => v != null);
   const max = Math.max(0.02, ...vals.map(Math.abs));
