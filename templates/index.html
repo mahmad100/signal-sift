@@ -165,9 +165,12 @@
         <label>Sector
           <select id="sector"><option value="">— all —</option></select>
         </label>
-        <label>Counts as up above
+        <label>Counts as up if
           <select id="ceiling">
-            <option value="0.0">0%</option><option value="0.05" selected>+5%</option><option value="0.10">+10%</option>
+            <option value="0.0">above 0%</option>
+            <option value="0.05" selected>above +5%</option>
+            <option value="0.10">above +10%</option>
+            <option value="spy">it beat SPY ◆</option>
           </select>
         </label>
         <input id="search" class="search" placeholder="Filter by ticker / name…" autocomplete="off">
