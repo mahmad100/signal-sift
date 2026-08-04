@@ -86,6 +86,24 @@ cold start. So:
   GitHub runner and commits the JSON; that push redeploys Vercel.
 - Locally `LIVE_SCREEN=True`, so dev pulls fully live (and fetches share counts) as normal.
 
+### Routing: use `routes`/`dest`, never `rewrites` (outage 2026-08-04)
+`vercel.json` **must** send traffic to the function with the legacy form:
+```json
+"routes": [{ "src": "/(.*)", "dest": "/api/index" }]
+```
+It previously used `"rewrites": [{ "source": "/(.*)", "destination": "/api/index" }]`, which
+worked until Vercel changed its behavior: the rewrite began replacing the request path, so
+the Flask app received `PATH_INFO=/api/index` for **every** URL and returned Werkzeug's 404
+site-wide — while builds all reported success and nothing in the repo had changed.
+`routes`/`dest` preserves the original path (verified live: a request to `/__probe` arrived
+with `PATH_INFO=/__probe`).
+
+**Diagnosing this class of bug:** the 404 body is Werkzeug's, not Vercel's, which proves the
+function is running and Flask is answering. The sharpest discriminator is `GET /api/refresh`
+— it's POST-only, so Flask returns **405** when it sees the real path and **404** when it
+doesn't. Compare live against `app.test_client()` locally. Preview deployments sit behind
+Vercel's SSO wall (302), so they can't be curled; diagnose against production.
+
 ### Refresh (why it works this way)
 An earlier design had a serverless Refresh do an on-demand live *price* pull, reusing the
 precompute's share counts to skip the market-cap fetch. **It didn't work** — even the
