@@ -96,7 +96,7 @@ function buildProfileHTML(p) {
   if (p._peers) html += peerSection(p._peers, p.returns);
 
   // ---- Thesis ----
-  html += `<div class="card thesis"><h3>Why it may be stalled</h3><ul class="why">` +
+  html += `<div class="card thesis"><h3>Why it may be down</h3><ul class="why">` +
     (p.why || []).map((w) => `<li>${esc(w)}</li>`).join("") + `</ul></div>`;
 
   // ---- Business summary ----

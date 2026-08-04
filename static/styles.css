@@ -74,6 +74,11 @@ h1 { margin: 0; font-size: 20px; letter-spacing: .3px; }
   border-radius: 7px; padding: 8px 11px; font-size: 13px; min-width: 200px; align-self: end;
 }
 .hint { color: var(--muted); font-size: 12px; align-self: center; }
+/* Standalone note under a control bar — .hint alone assumes it's a flex child. */
+.colnote {
+  align-self: auto; padding: 10px 2px 0; line-height: 1.5; max-width: 110ch;
+}
+.colnote b { color: var(--fg); font-weight: 600; }
 .tablewrap { overflow-x: auto; }
 
 .controls {
