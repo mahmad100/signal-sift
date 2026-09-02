@@ -323,48 +323,76 @@ function colPopHTML(ctx, c) {
 
 function wireColPop(ctx, c) {
   const pop = $("colpop");
-  pop.querySelectorAll(".cp-s").forEach((b) => {
-    b.onclick = () => {
-      ctx.sort = { key: c.key, dir: b.dataset.dir };
-      saveTable(); paint(ctx); closeColPop();
-    };
-  });
-  const apply = () => { saveTable(); paint(ctx); };
-  let t;
-  const debounce = (fn) => { clearTimeout(t); t = setTimeout(fn, 150); };
+  let t = null;
+  const cancel = () => { if (t) { clearTimeout(t); t = null; } };
 
-  if (c.kind === "text") {
-    const inp = pop.querySelector("#cpText");
-    inp.oninput = () => debounce(() => {
-      const v = inp.value.trim();
-      if (v) ctx.filters[c.key] = v; else delete ctx.filters[c.key];
-      apply();
-    });
-  } else if (c.kind === "enum") {
-    const boxes = [...pop.querySelectorAll(".cp-chk input")];
-    boxes.forEach((b) => b.onchange = () => {
-      const on = boxes.filter((x) => x.checked).map((x) => x.value);
-      if (on.length === 0 || on.length === boxes.length) delete ctx.filters[c.key];
-      else ctx.filters[c.key] = on;
-      apply();
-    });
-  } else {
+  const val = (sel) => { const el = pop.querySelector(sel); return el ? el.value : ""; };
+
+  // Current popover inputs -> a filter value, or undefined for "no filter".
+  function readFilter() {
+    if (c.kind === "text") {
+      return val("#cpText").trim() || undefined;
+    }
+    if (c.kind === "enum") {
+      const boxes = [...pop.querySelectorAll(".cp-chk input")];
+      const on = boxes.filter((b) => b.checked).map((b) => b.value);
+      return on.length === 0 || on.length === boxes.length ? undefined : on;
+    }
     const scale = c.kind === "money" ? 1 : 0.01;
-    const mn = pop.querySelector("#cpMin"), mx = pop.querySelector("#cpMax");
-    const upd = () => debounce(() => {
-      const o = {};
-      if (mn.value !== "" && !isNaN(parseFloat(mn.value))) o.min = parseFloat(mn.value) * scale;
-      if (mx.value !== "" && !isNaN(parseFloat(mx.value))) o.max = parseFloat(mx.value) * scale;
-      if (o.min != null || o.max != null) ctx.filters[c.key] = o; else delete ctx.filters[c.key];
-      apply();
-    });
-    mn.oninput = upd; mx.oninput = upd;
+    const mn = parseFloat(val("#cpMin")), mx = parseFloat(val("#cpMax"));
+    const o = {};
+    if (!isNaN(mn)) o.min = mn * scale;
+    if (!isNaN(mx)) o.max = mx * scale;
+    return o.min != null || o.max != null ? o : undefined;
   }
-  pop.querySelector(".cp-clear").onclick = () => {
+
+  // Commit whatever is in the inputs right now. `close` also dismisses the popover.
+  function commit(close) {
+    cancel();
+    const v = readFilter();
+    if (v === undefined) delete ctx.filters[c.key];
+    else ctx.filters[c.key] = v;
+    saveTable();
+    paint(ctx);
+    if (close) closeColPop();
+  }
+
+  // Wire the escape hatches (Clear / Done / sort) FIRST and each in its own try,
+  // so a problem building one control can never leave the others dead.
+  const wire = (sel, fn) => { try { const el = pop.querySelector(sel); if (el) el.onclick = fn; } catch (e) {} };
+
+  wire(".cp-clear", () => {
+    cancel();
+    // Blank the visible inputs so a pending edit can't reinstate the filter.
+    pop.querySelectorAll("#cpText, #cpMin, #cpMax").forEach((el) => (el.value = ""));
+    pop.querySelectorAll(".cp-chk input").forEach((x) => (x.checked = true));
     delete ctx.filters[c.key];
     saveTable(); paint(ctx); closeColPop();
-  };
-  pop.querySelector(".cp-done").onclick = () => closeColPop();
+  });
+  wire(".cp-done", () => commit(true));
+
+  try {
+    pop.querySelectorAll(".cp-s").forEach((b) => {
+      b.onclick = () => {
+        cancel();
+        ctx.sort = { key: c.key, dir: b.dataset.dir };
+        saveTable(); paint(ctx); closeColPop();
+      };
+    });
+  } catch (e) {}
+
+  try {
+    const live = () => { cancel(); t = setTimeout(() => commit(false), 200); };
+    const onEnter = (e) => { if (e.key === "Enter") commit(true); };
+    if (c.kind === "text") {
+      const inp = pop.querySelector("#cpText");
+      if (inp) { inp.oninput = live; inp.onkeydown = onEnter; }
+    } else if (c.kind === "enum") {
+      pop.querySelectorAll(".cp-chk input").forEach((b) => (b.onchange = () => commit(false)));
+    } else {
+      pop.querySelectorAll("#cpMin, #cpMax").forEach((el) => { el.oninput = live; el.onkeydown = onEnter; });
+    }
+  } catch (e) {}
 }
 
 // ---------------- Stocks view ----------------
