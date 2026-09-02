@@ -1,9 +1,9 @@
 # ◑ Signal Sift
 
 A trend radar for the **S&P 500**: it screens every name across 11 trailing windows
-(1D / 1W / 1M / 3M / 6M / 9M / 1Y / 2Y / 3Y / 4Y / 5Y), flags each as growing or stalled,
-and hands you the threads to pull on *why* — fundamentals, news, analyst targets, and
-direct links to **SEC filings**.
+(1D / 1W / 1M / 3M / 6M / 9M / 1Y / 2Y / 3Y / 4Y / 5Y), lets you slice the whole universe
+like a spreadsheet (sort and filter any column), and hands you the threads to pull on *why*
+— fundamentals, news, analyst targets, and direct links to **SEC filings**.
 
 The thesis: a large-cap that goes sideways while the index runs is a *signal*.
 Sometimes it's a value trap; sometimes it's a coiled spring the market hasn't
@@ -19,11 +19,13 @@ re-rated yet. Signal Sift finds them and points you at the primary sources.
   **1D, 1W, 1M, 3M, 6M, 9M, 1Y, 2Y, 3Y, 4Y, 5Y** — short windows catch recent
   moves, the multi-year windows reveal the long-term trend. Every name, growers
   *and* laggards.
-- **Explore the full universe**: toggle **All / Growing / Stalled**, pick the
-  reference window growth is judged over, sort by any window or stall score, and
-  filter by sector. Each row shows a ▲ Growing / ▼ Stalled status.
+- **Slice it like a spreadsheet**: click any column header for a popover that
+  **sorts** (ascending / descending) and **filters** that column — "contains" for
+  ticker and company, a sector checklist, and min/max for price and every return
+  window (e.g. "1Y above +30%", "5Y below −20%"). Active filters are marked; the
+  whole set persists across refreshes and is the basis for saved screens.
 - **Sector overview**: median return per GICS sector with a diverging bar chart
-  and growing-vs-stalled counts. Click a sector to filter the table to it.
+  and an up/down count per sector. Click a sector to filter the table to it.
 - **Index-weight visualizer** (Weights tab): see each stock's and sector's
   approximate share of the S&P 500, then **build a basket** — toggle whole
   sectors, set "top N by weight", or hand-pick names — and compare its return to
@@ -38,12 +40,11 @@ re-rated yet. Signal Sift finds them and points you at the primary sources.
   in a tab (a link, a search result, a new tab) and stays out of the way after that:
   no replay on refresh, or when you come back to the main page from a company page.
   Themed to your palette. (It's an overlay in `index.html`, not a separate page.)
-- **Flags "stalled" names** — return at or below a growth line you choose (default +5%).
-- **Ranks by stall score** (how many of the 7 windows are stalled) and relative
-  under-performance vs. SPY.
-- **Explains where to look**: click any row for a quick drawer of recent **SEC
-  EDGAR** filings (10-K, 10-Q, 8-K, proxies, insider Form 4s) and **analyst**
-  price targets, consensus rating, and upside-to-target.
+- **Finds dead money**: filter, say, `1Y` below `+5%` while `5Y` is above `+80%`
+  — a large-cap that went sideways while the index (and its own history) ran.
+- **Explains where to look**: click any row for the full pitchbook — recent **SEC
+  EDGAR** filings (10-K, 10-Q, 8-K, proxies, insider Form 4s), **analyst** price
+  targets, consensus rating, and upside-to-target.
 - **Pitchbook profile** — click any stock for a full visual detail view:
   - A **5-year** price-vs-SPY trend chart, trailing returns across all eleven
     windows (**1D → 5Y**), and relative performance.
@@ -56,19 +57,19 @@ re-rated yet. Signal Sift finds them and points you at the primary sources.
   - Valuation & profitability metrics, an analyst price-target gauge +
     **number of analysts following**, and rating distribution.
   - Business description, **recent news headlines with a bull/bear sentiment
-    tag**, SEC filings, and an auto-written "why it's stalled" thesis.
+    tag**, SEC filings, and an auto-written "why it may be down" thesis.
   - All charts are inline SVG (no external libraries) and recolor with the theme.
 
 ## Feels like an app
 
-- **Tabs** — *Individual stocks*, *Watchlist*, *Sectors*, and a *detail* tab that
-  opens when you click a name. Clicking a stock never loses your place or filters.
+- **Tabs** — *Individual stocks*, *Watchlist*, *Sectors*, *Weights*, and a *detail*
+  tab that opens when you click a name. Clicking a stock never loses your place or filters.
 - **Watchlist** — ★ any stock (from the list or its detail page) to track it in
-  its own tab through the full Signal Sift lens (returns, growing/stalled status,
-  stall score). The count shows in the tab, and it persists across refreshes.
-- **Instant filtering** — the full universe is fetched **once**; all filtering,
-  sorting, search, and sector math happen in the browser, so nothing re-pulls
-  when you change a control.
+  its own tab, in the same sort/filter-any-column table. The count shows in the
+  tab, and it persists across refreshes.
+- **Instant filtering** — the full universe is fetched **once**; all sorting,
+  filtering, and sector math happen in the browser, so nothing re-pulls when you
+  change a column filter.
 - **Local caching** — the screen and each company profile are cached in
   `localStorage`; reopening the app or a stock is instant. Once the cached screen
   is over an hour old the app re-checks in the background on load and adopts any
@@ -92,7 +93,9 @@ re-rated yet. Signal Sift finds them and points you at the primary sources.
   stamp. Bump the `_SCHEMA` constant in a module (`company.py`, `fundamentals.py`,
   `news.py`) and its old caches are ignored and re-pulled automatically — no
   manual cache-clearing. The browser mirrors this with `APP_SCHEMA` in `app.js`,
-  which purges stale `localStorage` data (keeping your filters and theme).
+  which purges stale `localStorage` data (keeping your column filters and theme).
+- **Deploy-versioned assets** — the page loads `app.js` / `styles.css` with a
+  `?v=<deploy>` token, so a new deploy is never masked by a stale browser cache.
 - **Themes** — Midnight, Carbon, Daylight, Amber terminal, and Ocean. Charts
   recolor to match. Your choice is remembered.
 - **Sector heatmap** — sectors × windows, color-graded by median return.
@@ -170,26 +173,37 @@ hand: **Actions tab → Precompute screen → Run workflow**.
 
 ## Using the dashboard
 
-- **Stall ceiling** — what counts as "not grown" (≤ 0% / 5% / 10%).
-- **Show** — All names / Growing only / Stalled only.
-- **Growth over** — reference window used to judge growing vs. stalled.
-- **Sort by** — any window's return or the stall score; **Order** flips best/worst first.
-- **Sector** — narrow to one GICS sector (or click a bar in the Sector overview).
-- **Growth line** — the return threshold that separates growing from stalled.
-- **↻ Refresh data** — get the newest prices. Locally that's a live Yahoo pull; on
-  the deployed app it loads the latest published screen instantly, then runs an
-  off-schedule precompute in the background (a few minutes).
-- Click a row → side drawer with the "why" bullets, analyst targets, and filings,
-  and an **Open full pitchbook ↗** button.
+Every column of the *Individual stocks* and *Watchlist* tables is a button. Click a
+header for a popover that lets you:
 
-## How growth / "not grown" is measured
+- **Sort** — ascending or descending on that column (A→Z for text, low→high for numbers).
+- **Filter** —
+  - *Ticker / Company* → "contains" text
+  - *Sector* → a checklist (pick one or several; all-checked or none = no filter)
+  - *Price* → min / max in dollars
+  - *1D … 5Y* → min / max as a **percentage** (`10` means +10%; negatives filter losers)
+
+Filtered columns are highlighted; the sorted column shows ▲ / ▼. A **Clear all filters**
+link appears in the status line, and each popover has its own **Clear**. Your sort and
+filters are saved and restored on the next visit.
+
+Other bits:
+
+- Click a **sector** in the Sectors tab → opens *Individual stocks* filtered to it.
+- **↻ Refresh data** — newest prices. Locally a live Yahoo pull; on the deployed app it
+  loads the latest published screen instantly, then runs an off-schedule precompute in the
+  background (a few minutes).
+- Click a **row** → the full pitchbook (fundamentals, analyst targets, news, filings, and a
+  "why it may be down" thesis).
+
+## How the returns are measured
 
 For each window of *D* calendar days, the trailing return is
 `close_today / close_asof(today − D) − 1`, using the last close on or before the
-lookback date. A name is **growing** over the reference window when that return is
-above the growth line, otherwise **stalled**. The **Stall** column counts stalled
-windows (0–11); 11 means flat-or-down over every horizon. Sector medians aggregate
-these returns across each GICS sector's constituents.
+lookback date — so `1Y` means "bought a year ago, held to now". A dash (—) means there's
+no price history that far back (a recent listing). Sector medians aggregate these returns
+across each GICS sector's constituents; the Sectors tab's up/down split counts names above
+vs. at-or-below a fixed +5% line over the chosen window.
 
 ## Layout
 
