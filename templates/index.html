@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Signal Sift</title>
   <script>document.documentElement.dataset.theme = localStorage.getItem("ss-theme") || "midnight";</script>
-  <link rel="stylesheet" href="/static/styles.css">
+  <link rel="stylesheet" href="{{ asset('styles.css') }}">
 </head>
 <body>
   <!-- ============ INTRO SPLASH (greets a fresh arrival in a tab, then clears itself) ============ -->
@@ -240,7 +240,7 @@
     </div>
   </div>
 
-  <script src="/static/company.js"></script>
-  <script src="/static/app.js"></script>
+  <script src="{{ asset('company.js') }}"></script>
+  <script src="{{ asset('app.js') }}"></script>
 </body>
 </html>
