@@ -13,6 +13,29 @@ app = Flask(
 )
 
 
+_DEPLOY_SHA = (os.environ.get("VERCEL_GIT_COMMIT_SHA") or "")[:8]
+
+
+def _asset_version():
+    """A token that changes on every deploy so browsers can't serve a stale
+    app.js/styles.css. Vercel sets VERCEL_GIT_COMMIT_SHA per deploy; locally we
+    use the newest mtime under static/ so a plain edit + restart busts it too."""
+    if _DEPLOY_SHA:
+        return _DEPLOY_SHA
+    try:
+        d = app.static_folder
+        return str(int(max(os.path.getmtime(os.path.join(d, f))
+                           for f in os.listdir(d) if f.endswith((".js", ".css")))))
+    except (OSError, ValueError):
+        return "dev"
+
+
+@app.context_processor
+def _inject_asset_helper():
+    # {{ asset('app.js') }} -> /static/app.js?v=<token>
+    return {"asset": lambda name: f"/static/{name}?v={_asset_version()}"}
+
+
 @app.route("/")
 def index():
     # index.html opens with the intro splash overlay (plays on every load), then

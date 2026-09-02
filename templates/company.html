@@ -5,13 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ ticker }} · Signal Sift</title>
   <script>document.documentElement.dataset.theme = localStorage.getItem("ss-theme") || "midnight";</script>
-  <link rel="stylesheet" href="/static/styles.css">
+  <link rel="stylesheet" href="{{ asset('styles.css') }}">
 </head>
 <body class="pb">
   <div id="app" class="pb-wrap" data-ticker="{{ ticker }}">
     <a class="back" href="/">← Back to screen</a>
     <div id="pbBody"><p class="loading">Assembling pitchbook for {{ ticker }}…</p></div>
   </div>
-  <script src="/static/company.js"></script>
+  <script src="{{ asset('company.js') }}"></script>
 </body>
 </html>
