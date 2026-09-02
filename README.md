@@ -9,9 +9,9 @@ The thesis: a large-cap that goes sideways while the index runs is a *signal*.
 Sometimes it's a value trap; sometimes it's a coiled spring the market hasn't
 re-rated yet. Signal Sift finds them and points you at the primary sources.
 
-> **Working on this project?** Start with **[docs/HANDOFF.md](docs/HANDOFF.md)** —
-> current state, how to run/test/deploy, and next steps. See also
-> [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/ROADMAP.md](docs/ROADMAP.md).
+> **Working on this project?** See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the
+> code is organized and [docs/ROADMAP.md](docs/ROADMAP.md) for direction. Setup and how to
+> run/test/deploy are below.
 
 ## What it does
 

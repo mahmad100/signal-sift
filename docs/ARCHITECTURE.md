@@ -1,7 +1,7 @@
 # Signal Sift — Architecture
 
 How the code is organized, how data flows, and the non-obvious decisions. See
-[HANDOFF.md](HANDOFF.md) for status and [ROADMAP.md](ROADMAP.md) for direction.
+[ROADMAP.md](ROADMAP.md) for direction.
 
 ## Layout
 ```
