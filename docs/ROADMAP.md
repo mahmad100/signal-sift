@@ -1,7 +1,6 @@
 # Signal Sift — Strategy & Roadmap
 
-Direction, positioning, and what's next. See [HANDOFF.md](HANDOFF.md) to resume and
-[ARCHITECTURE.md](ARCHITECTURE.md) for the code.
+Direction, positioning, and what's next. See [ARCHITECTURE.md](ARCHITECTURE.md) for the code.
 
 ## Goal
 Eventually **sell to small / retail investors** who want to spot trends and "see things

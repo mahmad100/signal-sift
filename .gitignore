@@ -7,3 +7,8 @@ data/*.log
 !data/precomputed_screen.json
 .env
 .vercel
+
+# Local tooling / assistant working files — never publish (repo is going public)
+.claude/
+CLAUDE.md
+docs/HANDOFF.md
