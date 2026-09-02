@@ -7,12 +7,13 @@ let WINDOWS = ["1D", "1W", "1M", "3M", "6M", "9M", "1Y", "2Y", "3Y", "4Y", "5Y"]
 
 // Bump when the cached payload shape changes; stale local caches self-purge.
 // Keep in step with the server schema stamps in company.py / fundamentals.py.
-const APP_SCHEMA = "5";
+const APP_SCHEMA = "6";
 function purgeStaleCaches() {
   if (localStorage.getItem("ss-schema") === APP_SCHEMA) return;
-  ["ss-base"].concat(
+  // Drop data caches + the retired filter-bar keys; keep theme + the new ss-table.
+  ["ss-base", "ss-filters", "ss-wlover"].concat(
     Object.keys(localStorage).filter((k) => k.startsWith("ss-co-"))
-  ).forEach((k) => localStorage.removeItem(k));   // drop data; keep filters + theme
+  ).forEach((k) => localStorage.removeItem(k));
   localStorage.setItem("ss-schema", APP_SCHEMA);
 }
 
@@ -33,15 +34,9 @@ function median(a) {
 }
 
 // ---------------- State + persistence ----------------
-const DEFAULT_FILTERS = {
-  status: "all", over: "1Y", sort: "", direction: "desc",
-  sector: "", ceiling: "0.05", search: "",
-};
 const State = {
   base: null,                 // { rows, meta, ts }
-  filters: { ...DEFAULT_FILTERS },
   secOver: "1Y",
-  wlOver: "1Y",
   wtOver: "1Y",               // Weights view: return window for basket-vs-SPY
   wtScheme: "cap",            // Weights view: 'cap' | 'equal'
   active: "stocks",
@@ -76,19 +71,36 @@ function loadBase() {
   try { return JSON.parse(localStorage.getItem("ss-base")); } catch (e) { return null; }
 }
 function saveFilters() {
-  localStorage.setItem("ss-filters", JSON.stringify(State.filters));
   localStorage.setItem("ss-secover", State.secOver);
-  localStorage.setItem("ss-wlover", State.wlOver);
   localStorage.setItem("ss-wtover", State.wtOver);
   localStorage.setItem("ss-wtscheme", State.wtScheme);
 }
 function loadFilters() {
+  State.secOver = localStorage.getItem("ss-secover") || "1Y";
+  State.wtOver = localStorage.getItem("ss-wtover") || "1Y";
+  State.wtScheme = localStorage.getItem("ss-wtscheme") || "cap";
+}
+
+// Per-column sort + filter for the two spreadsheet-style tables. This is the
+// state a future "saved screens" feature would name and persist.
+const STX = { key: "stx", headEl: "headRow", bodyEl: "rows", statusEl: "status-line",
+              noun: "names", sort: { key: "1Y", dir: "desc" }, filters: {},
+              scope: () => (State.base ? State.base.rows : []) };
+const WL  = { key: "wl", headEl: "wlHead", bodyEl: "wlRows", statusEl: "wl-status",
+              noun: "watched", sort: { key: "1Y", dir: "desc" }, filters: {},
+              scope: () => (State.base ? State.base.rows.filter((r) => State.watchlist.has(r.ticker)) : []) };
+
+function saveTable() {
+  localStorage.setItem("ss-table", JSON.stringify({
+    stx: { sort: STX.sort, filters: STX.filters },
+    wl:  { sort: WL.sort,  filters: WL.filters },
+  }));
+}
+function loadTable() {
   try {
-    Object.assign(State.filters, JSON.parse(localStorage.getItem("ss-filters")) || {});
-    State.secOver = localStorage.getItem("ss-secover") || "1Y";
-    State.wlOver = localStorage.getItem("ss-wlover") || "1Y";
-    State.wtOver = localStorage.getItem("ss-wtover") || "1Y";
-    State.wtScheme = localStorage.getItem("ss-wtscheme") || "cap";
+    const t = JSON.parse(localStorage.getItem("ss-table")) || {};
+    if (t.stx) { STX.sort = t.stx.sort || STX.sort; STX.filters = t.stx.filters || {}; }
+    if (t.wl)  { WL.sort  = t.wl.sort  || WL.sort;  WL.filters  = t.wl.filters  || {}; }
   } catch (e) {}
 }
 function clearDetailCache() {
@@ -123,132 +135,242 @@ async function fetchBase(force = false) {
   return data.generated_at;
 }
 
-// ---------------- Client-side classification ----------------
-const SPY_LINE = "spy";
-const isSpyLine = () => State.filters.ceiling === SPY_LINE;
+// ---------------- Client-side classification (Sectors tab up/down split) ----------------
+// The screener no longer exposes a "counts as up" control — filtering is now
+// per-column. The Sectors tab still shows a growing/stalled mix, judged against
+// this fixed line.
+const GROWTH_LINE = 0.05;
 
-// The bar a window has to clear to count as "up". Either a flat percentage, or
-// — on the benchmark line — SPY's own return over that same window, so the bar
-// moves per column instead of being one constant across all eleven. A flat 0%
-// is a near-meaningless test at 5Y, where SPY itself is up ~85%.
-function lineFor(w) {
-  if (!isSpyLine()) return parseFloat(State.filters.ceiling) || 0;
-  const b = (State.base && State.base.meta && State.base.meta.benchmark_returns) || {};
-  return b[w] == null ? null : b[w];
-}
-
-// true = up, false = down, null = unjudgeable (no price history that far back,
-// or no benchmark for this window). Callers must treat null as "not up" AND
-// "not down" — it must not fall into either bucket by default.
+// true = up, false = down, null = unjudgeable (no price history that far back).
+// null must fall into NEITHER bucket — always compare === true / === false.
 function judge(row, w) {
-  const v = row.returns[w], line = lineFor(w);
-  return v == null || line == null ? null : v > line;
+  const v = row.returns[w];
+  return v == null ? null : v > GROWTH_LINE;
 }
 
-// How the current line reads in prose, for the summary lines.
-function lineLabel(w) {
-  if (!isSpyLine()) return `up = above ${(parseFloat(State.filters.ceiling) * 100).toFixed(0)}%`;
-  const l = lineFor(w);
-  return l == null ? "up = beat SPY, but SPY has no return for this window"
-                   : `up = beat SPY over ${w}, i.e. above ${(l * 100).toFixed(1)}%`;
+// ---------------- Spreadsheet-style table (stocks + watchlist) ----------------
+// Columns are data-driven. `kind` drives the header popover: text = contains,
+// enum = checklist, money/pct = min/max range (pct entered as a percentage).
+function tableCols() {
+  return [
+    { key: "ticker", label: "Ticker",  kind: "text",  get: (r) => r.ticker,
+      cell: (r) => `<td class="tk">${r.ticker}</td>` },
+    { key: "name",   label: "Company", kind: "text",  get: (r) => r.name || "",
+      cell: (r) => `<td>${esc(r.name || "")}</td>` },
+    { key: "sector", label: "Sector",  kind: "enum",  get: (r) => r.sector || "",
+      cell: (r) => `<td>${esc(r.sector || "")}</td>` },
+    { key: "price",  label: "Price",   kind: "money", num: true, get: (r) => r.price,
+      cell: (r) => `<td class="num">$${Number(r.price).toFixed(2)}</td>` },
+    ...WINDOWS.map((w) => ({
+      key: w, label: w, kind: "pct", num: true, get: (r) => r.returns[w],
+      cell: (r) => `<td class="num">${pct(r.returns[w])}</td>`,
+    })),
+  ];
 }
 
-function stallInfo(row) {
-  const stalled = WINDOWS.filter((w) => judge(row, w) === false);
-  return { stalled, score: stalled.length };
-}
-function isGrowing(row, over) { return judge(row, over) === true; }
-
-function decorate(r, over) {
-  const si = stallInfo(r);
-  return { ...r, _stalled: si.stalled, _score: si.score,
-           _growing: isGrowing(r, over) };
+// Is a stored filter value actually constraining anything?
+function activeFilter(f) {
+  if (f == null) return false;
+  if (Array.isArray(f)) return f.length > 0;
+  if (typeof f === "object") return f.min != null || f.max != null;
+  return f !== "";
 }
 
-function computeRows() {
-  const f = State.filters, over = f.over;
-  const q = (f.search || "").trim().toLowerCase();
-  let rows = State.base.rows.filter((r) => {
-    if (f.sector && r.sector !== f.sector) return false;
-    if (q && !(r.ticker.toLowerCase().includes(q) ||
-               (r.name || "").toLowerCase().includes(q))) return false;
-    const v = judge(r, over);
-    if (f.status === "growing" && v !== true) return false;
-    if (f.status === "stalled" && v !== false) return false;
-    return true;
-  }).map((r) => decorate(r, over));
+function rowPasses(r, filters, cols) {
+  for (const c of cols) {
+    const f = filters[c.key];
+    if (!activeFilter(f)) continue;
+    const v = c.get(r);
+    if (c.kind === "text") {
+      if (!String(v).toLowerCase().includes(String(f).toLowerCase())) return false;
+    } else if (c.kind === "enum") {
+      if (!f.includes(v)) return false;
+    } else {
+      if (f.min != null && (v == null || v < f.min)) return false;
+      if (f.max != null && (v == null || v > f.max)) return false;
+    }
+  }
+  return true;
+}
 
-  const sort = f.sort || over;
-  rows.sort((a, b) => {
-    const av = sort === "stall" ? a._score : (a.returns[sort] ?? -Infinity);
-    const bv = sort === "stall" ? b._score : (b.returns[sort] ?? -Infinity);
-    return f.direction === "asc" ? av - bv : bv - av;
+function sortRows(rows, sort, cols) {
+  const c = cols.find((x) => x.key === sort.key) ||
+            cols.find((x) => x.key === "1Y") || cols[0];
+  const dir = sort.dir === "asc" ? 1 : -1;
+  const text = c.kind === "text" || c.kind === "enum";
+  return rows.sort((a, b) => {
+    let av = c.get(a), bv = c.get(b);
+    if (text) return dir * String(av).toLowerCase().localeCompare(String(bv).toLowerCase());
+    av = av == null ? -Infinity : av;
+    bv = bv == null ? -Infinity : bv;
+    return dir * (av - bv);
   });
-  return rows;
 }
 
-// ---------------- Shared table builders (stocks + watchlist) ----------------
-function headHTML(over) {
-  const fixed = ["Ticker", "Company", "Sector", "Price"];
-  return `<th class="star-h"></th>` +
-    fixed.map((h, i) => `<th${i >= 3 ? ' class="num"' : ""}>${h}</th>`).join("") +
-    WINDOWS.map((w) => `<th class="num${w === over ? " refcol" : ""}">${w}</th>`).join("") +
-    `<th class="num">Verdict</th>` +
-    `<th class="num" title="How many of the ${WINDOWS.length} windows are below the line">Down</th>`;
+function paintHead(ctx, cols) {
+  const th = cols.map((c) => {
+    const s = ctx.sort.key === c.key ? (ctx.sort.dir === "asc" ? " up" : " down") : "";
+    const fl = activeFilter(ctx.filters[c.key]) ? " filtered" : "";
+    return `<th class="${c.num ? "num " : ""}colh">` +
+      `<button class="colhead${s}${fl}" data-col="${c.key}">` +
+      `<span class="ch-label">${c.label}</span><span class="ch-ind" aria-hidden="true"></span>` +
+      `</button></th>`;
+  }).join("");
+  $(ctx.headEl).innerHTML = `<th class="star-h"></th>` + th;
+  $(ctx.headEl).querySelectorAll(".colhead").forEach((btn) => {
+    btn.onclick = (e) => { e.stopPropagation(); openColPop(ctx, btn.dataset.col, btn); };
+  });
 }
 
-function makeRow(r, over) {
+function tableRow(r, cols) {
   const tr = document.createElement("tr");
   tr.dataset.tk = r.ticker;
-  const sc = r._score;
-  const badge = sc >= WINDOWS.length ? "s5" : sc >= WINDOWS.length - 1 ? "s4" : "";
-  const scTip = `Down over ${sc} of the ${WINDOWS.length} windows`;
-  // The window is baked into the pill on purpose: "Down" alone reads like a
-  // property of the stock, when it's only ever a verdict about one window.
-  const stat = r._growing ? `<span class="pill grow">▲ Up ${over}</span>`
-                          : `<span class="pill stall">▼ Down ${over}</span>`;
   const on = isWatched(r.ticker);
   tr.innerHTML =
     `<td class="starcell"><span class="star ${on ? "on" : "off"}" title="Watchlist">${on ? "★" : "☆"}</span></td>` +
-    `<td class="tk">${r.ticker}</td><td>${esc(r.name)}</td><td>${esc(r.sector || "")}</td>` +
-    `<td class="num">$${Number(r.price).toFixed(2)}</td>` +
-    WINDOWS.map((w) => `<td class="num${w === over ? " refcol" : ""}">${pct(r.returns[w])}</td>`).join("") +
-    `<td class="num">${stat}</td>` +
-    `<td class="num"><span class="badge ${badge}" title="${scTip}">${sc}</span></td>`;
+    cols.map((c) => c.cell(r)).join("");
   tr.onclick = () => openDetail(r.ticker);
   tr.querySelector(".star").onclick = (e) => { e.stopPropagation(); toggleWatch(r.ticker); };
   return tr;
 }
 
-// ---------------- Stocks view ----------------
-function renderStocks() {
-  if (!State.base) return;
-  const f = State.filters, over = f.over;
-  $("headRow").innerHTML = headHTML(over);
+function paintBody(ctx, cols) {
+  const all = ctx.scope();
+  let rows = all.filter((r) => rowPasses(r, ctx.filters, cols));
+  rows = sortRows(rows, ctx.sort, cols);
 
-  // Populate sector dropdown once.
-  const sel = $("sector");
-  if (sel.options.length <= 1 && State.base.meta.sectors) {
-    State.base.meta.sectors.forEach((s) => sel.add(new Option(s, s)));
-    sel.value = f.sector;
-  }
-
-  const rows = computeRows();
-  const scope = State.base.rows.filter((r) => !f.sector || r.sector === f.sector);
-  const grow = scope.filter((r) => judge(r, over) === true).length;
-  const stall = scope.filter((r) => judge(r, over) === false).length;
-
-  $("status-line").innerHTML =
-    `Showing <b>${rows.length}</b> of ${scope.length} · measured over <b>${over}</b>: ` +
-    `<span class="ret-up">${grow} up</span> · <span class="ret-down">${stall} down</span> ` +
-    `(${lineLabel(over)}).`;
-
-  const tb = $("rows");
+  const tb = $(ctx.bodyEl);
   tb.innerHTML = "";
   State.cursor = -1;
   const frag = document.createDocumentFragment();
-  rows.forEach((r) => frag.appendChild(makeRow(r, over)));
+  rows.forEach((r) => frag.appendChild(tableRow(r, cols)));
   tb.appendChild(frag);
+
+  const has = cols.some((c) => activeFilter(ctx.filters[c.key]));
+  $(ctx.statusEl).innerHTML =
+    `Showing <b>${rows.length}</b> of ${all.length} ${ctx.noun}` +
+    (has ? ` · <span class="linkbtn" data-clearall>Clear all filters</span>` : "");
+  const cl = $(ctx.statusEl).querySelector("[data-clearall]");
+  if (cl) cl.onclick = () => { ctx.filters = {}; saveTable(); closeColPop(); paint(ctx); };
+}
+
+function paint(ctx) {
+  const cols = tableCols();
+  paintHead(ctx, cols);
+  paintBody(ctx, cols);
+}
+
+// ---------------- Column sort/filter popover ----------------
+let popCtx = null, popColKey = null;
+
+function openColPop(ctx, colKey, btnEl) {
+  const cols = tableCols();
+  const c = cols.find((x) => x.key === colKey);
+  if (!c) return;
+  const pop = $("colpop");
+  if (popCtx === ctx && popColKey === colKey && !pop.classList.contains("hidden")) {
+    closeColPop();
+    return;
+  }
+  popCtx = ctx; popColKey = colKey;
+  pop.innerHTML = colPopHTML(ctx, c);
+  pop.classList.remove("hidden");
+  const r = btnEl.getBoundingClientRect();
+  const w = pop.offsetWidth || 220;
+  pop.style.top = Math.round(r.bottom + 4) + "px";
+  pop.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 8 - w)) + "px";
+  wireColPop(ctx, c);
+}
+
+function closeColPop() {
+  $("colpop").classList.add("hidden");
+  popCtx = null; popColKey = null;
+}
+
+function colPopHTML(ctx, c) {
+  const txt = c.kind === "text" || c.kind === "enum";
+  const asc = txt ? "A → Z" : "Low → High";
+  const desc = txt ? "Z → A" : "High → Low";
+  const sk = ctx.sort.key === c.key;
+  const f = ctx.filters[c.key];
+  let body = "";
+  if (c.kind === "text") {
+    body = `<label class="cp-l">Contains` +
+      `<input class="cp-in" id="cpText" type="text" value="${f ? esc(String(f)) : ""}" placeholder="ticker or name…"></label>`;
+  } else if (c.kind === "enum") {
+    const opts = (State.base && State.base.meta.sectors) ||
+      [...new Set(ctx.scope().map((r) => r.sector).filter(Boolean))].sort();
+    const set = new Set(Array.isArray(f) ? f : []);
+    const none = set.size === 0;
+    body = `<div class="cp-list">` + opts.map((s) =>
+      `<label class="cp-chk"><input type="checkbox" value="${esc(s)}" ${none || set.has(s) ? "checked" : ""}> ${esc(s)}</label>`
+    ).join("") + `</div>`;
+  } else {
+    const unit = c.kind === "money" ? "$" : "%";
+    const scale = c.kind === "money" ? 1 : 100;
+    const mn = f && f.min != null ? +(f.min * scale).toFixed(4) : "";
+    const mx = f && f.max != null ? +(f.max * scale).toFixed(4) : "";
+    body = `<div class="cp-range">` +
+      `<label class="cp-l">Min ${unit}<input class="cp-in" id="cpMin" type="number" step="any" value="${mn}"></label>` +
+      `<label class="cp-l">Max ${unit}<input class="cp-in" id="cpMax" type="number" step="any" value="${mx}"></label></div>`;
+  }
+  return `<div class="cp-sort">` +
+    `<button class="cp-s${sk && ctx.sort.dir === "asc" ? " on" : ""}" data-dir="asc">↑ ${asc}</button>` +
+    `<button class="cp-s${sk && ctx.sort.dir === "desc" ? " on" : ""}" data-dir="desc">↓ ${desc}</button>` +
+    `</div><div class="cp-div"></div>${body}` +
+    `<div class="cp-foot"><button class="cp-clear">Clear</button><button class="cp-done">Done</button></div>`;
+}
+
+function wireColPop(ctx, c) {
+  const pop = $("colpop");
+  pop.querySelectorAll(".cp-s").forEach((b) => {
+    b.onclick = () => {
+      ctx.sort = { key: c.key, dir: b.dataset.dir };
+      saveTable(); paint(ctx); closeColPop();
+    };
+  });
+  const apply = () => { saveTable(); paint(ctx); };
+  let t;
+  const debounce = (fn) => { clearTimeout(t); t = setTimeout(fn, 150); };
+
+  if (c.kind === "text") {
+    const inp = pop.querySelector("#cpText");
+    inp.oninput = () => debounce(() => {
+      const v = inp.value.trim();
+      if (v) ctx.filters[c.key] = v; else delete ctx.filters[c.key];
+      apply();
+    });
+  } else if (c.kind === "enum") {
+    const boxes = [...pop.querySelectorAll(".cp-chk input")];
+    boxes.forEach((b) => b.onchange = () => {
+      const on = boxes.filter((x) => x.checked).map((x) => x.value);
+      if (on.length === 0 || on.length === boxes.length) delete ctx.filters[c.key];
+      else ctx.filters[c.key] = on;
+      apply();
+    });
+  } else {
+    const scale = c.kind === "money" ? 1 : 0.01;
+    const mn = pop.querySelector("#cpMin"), mx = pop.querySelector("#cpMax");
+    const upd = () => debounce(() => {
+      const o = {};
+      if (mn.value !== "" && !isNaN(parseFloat(mn.value))) o.min = parseFloat(mn.value) * scale;
+      if (mx.value !== "" && !isNaN(parseFloat(mx.value))) o.max = parseFloat(mx.value) * scale;
+      if (o.min != null || o.max != null) ctx.filters[c.key] = o; else delete ctx.filters[c.key];
+      apply();
+    });
+    mn.oninput = upd; mx.oninput = upd;
+  }
+  pop.querySelector(".cp-clear").onclick = () => {
+    delete ctx.filters[c.key];
+    saveTable(); paint(ctx); closeColPop();
+  };
+  pop.querySelector(".cp-done").onclick = () => closeColPop();
+}
+
+// ---------------- Stocks view ----------------
+function renderStocks() {
+  if (!State.base) return;
+  paint(STX);
 }
 
 // ---------------- Watchlist view ----------------
@@ -280,33 +402,16 @@ function updateWatchCount() {
 }
 
 function renderWatchlist() {
-  const over = State.wlOver;
-  $("wlHead").innerHTML = headHTML(over);
-  const tickers = [...State.watchlist];
-  const empty = tickers.length === 0;
+  const empty = State.watchlist.size === 0;
   $("wlEmpty").classList.toggle("hidden", !empty);
   $("wlGrid").classList.toggle("hidden", empty);
-
-  if (empty || !State.base) { $("wl-status").textContent = ""; $("wlRows").innerHTML = ""; return; }
-
-  const rows = State.base.rows
-    .filter((r) => State.watchlist.has(r.ticker))
-    .map((r) => decorate(r, over))
-    .sort((a, b) => (b.returns[over] ?? -Infinity) - (a.returns[over] ?? -Infinity));
-
-  const grow = rows.filter((r) => judge(r, over) === true).length;
-  const down = rows.filter((r) => judge(r, over) === false).length;
-  $("wl-status").innerHTML =
-    `<b>${rows.length}</b> watched · measured over <b>${over}</b>: ` +
-    `<span class="ret-up">${grow} up</span> · <span class="ret-down">${down} down</span> ` +
-    `(${lineLabel(over)}).`;
-
-  const tb = $("wlRows");
-  tb.innerHTML = "";
-  State.cursor = -1;
-  const frag = document.createDocumentFragment();
-  rows.forEach((r) => frag.appendChild(makeRow(r, over)));
-  tb.appendChild(frag);
+  if (empty || !State.base) {
+    $("wl-status").textContent = "";
+    $("wlRows").innerHTML = "";
+    $("wlHead").innerHTML = "";
+    return;
+  }
+  paint(WL);
 }
 
 // ---------------- Sectors view ----------------
@@ -387,12 +492,11 @@ function renderSectors() {
   }).join("");
   $("sectorHeat").innerHTML = `<table class="heattable"><thead>${head}</thead><tbody>${body}</tbody></table>`;
 
-  // Wire clicks -> filter stocks tab by sector.
+  // Wire clicks -> open the stocks tab filtered to that one sector.
   const go = (secName) => {
-    State.filters.sector = secName;
-    State.filters.status = "all";
-    $("sector").value = secName;
-    saveFilters();
+    STX.filters = { sector: [secName] };
+    saveTable();
+    closeColPop();
     switchTab("stocks");
     renderStocks();
   };
@@ -758,6 +862,7 @@ function moveCursor(delta) {
 // ---------------- Tabs ----------------
 function switchTab(name) {
   clearCursor();
+  closeColPop();
   State.active = name;
   ["stocks", "watchlist", "sectors", "weights", "detail"].forEach((v) => {
     $("view-" + v).classList.toggle("hidden", v !== name);
@@ -795,11 +900,7 @@ function applyHash() {
 
 // ---------------- Boot + events ----------------
 function syncControlsFromState() {
-  ["status", "over", "sort", "direction", "sector", "ceiling", "search"].forEach((id) => {
-    if ($(id) != null) $(id).value = State.filters[id];
-  });
   $("secOver").value = State.secOver;
-  $("wlOver").value = State.wlOver;
   $("wtOver").value = State.wtOver;
   $("wtScheme").value = State.wtScheme;
   $("theme").value = localStorage.getItem("ss-theme") || "midnight";
@@ -894,6 +995,7 @@ async function freshenIfStale() {
 async function boot() {
   purgeStaleCaches();
   loadFilters();
+  loadTable();
   loadWatchlist();
   loadBasket();
   updateWatchCount();
@@ -914,26 +1016,22 @@ async function boot() {
     renderStocks();
   }
 
-  // Filter controls -> re-render client-side (no network).
-  ["status", "over", "sort", "direction", "sector", "ceiling"].forEach((id) =>
-    $(id).addEventListener("change", () => {
-      State.filters[id] = $(id).value;
-      saveFilters();
-      renderStocks();
-    }));
-  let searchT;
-  $("search").addEventListener("input", () => {
-    State.filters.search = $("search").value;
-    clearTimeout(searchT);
-    searchT = setTimeout(() => { saveFilters(); renderStocks(); }, 150);
+  // Column sort/filter popover: dismiss on outside-click, Esc, scroll, resize.
+  document.addEventListener("mousedown", (e) => {
+    if ($("colpop").classList.contains("hidden")) return;
+    if (e.target.closest("#colpop") || e.target.closest(".colhead")) return;
+    closeColPop();
   });
+  window.addEventListener("scroll", () => {
+    if (!$("colpop").classList.contains("hidden")) closeColPop();
+  }, true);
+  window.addEventListener("resize", () => {
+    if (!$("colpop").classList.contains("hidden")) closeColPop();
+  });
+
   $("secOver").addEventListener("change", () => {
     State.secOver = $("secOver").value; saveFilters(); renderSectors();
   });
-  $("wlOver").addEventListener("change", () => {
-    State.wlOver = $("wlOver").value; saveFilters(); renderWatchlist();
-  });
-
   // Weights view controls.
   $("wtOver").addEventListener("change", () => {
     State.wtOver = $("wtOver").value; saveFilters(); renderWeights();
@@ -983,6 +1081,7 @@ async function boot() {
     }
     if (e.key === "Escape" && Cmd.open) { closePalette(); return; }
     if (Cmd.open) return;                       // palette input handles its own keys
+    if (e.key === "Escape" && !$("colpop").classList.contains("hidden")) { closeColPop(); return; }
     const typing = isTyping(document.activeElement);
     if (e.key === "/" && !typing) { e.preventDefault(); openPalette(); return; }
     if (e.key === "Escape" && !typing && State.active === "detail") { switchTab("stocks"); return; }
