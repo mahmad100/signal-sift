@@ -100,7 +100,7 @@ function buildProfileHTML(p) {
   </div>`;
 
   // ---- Peer comparison (SPA injects p._peers) ----
-  if (p._peers) html += peerSection(p._peers, p.returns);
+  if (p._peers) html += peerSection(p._peers, p.returns, p.ticker);
 
   // ---- Thesis ----
   html += `<div class="card thesis"><h3>Why it may be down</h3><ul class="why">` +
@@ -512,14 +512,17 @@ function multiLineRaw(labels, series, fmt) {
 }
 
 // Peer comparison vs sector median (data injected by the SPA as p._peers).
-function peerSection(peers, stockReturns) {
+function peerSection(peers, stockReturns, ticker) {
   if (!peers) return "";
-  const wins = ["1M", "3M", "6M", "12M"].filter((w) => stockReturns[w] != null);
+  const wins = ["1M", "3M", "6M", "1Y"].filter((w) => stockReturns[w] != null);
   const rankTxt = peers.rank
     ? `Ranks <b>#${peers.rank}</b> of ${peers.count} in ${esc(peers.sector)} by 12-month return.`
     : "";
+  // Name the stock's own series (its ticker) and give it the fixed SERIES blue —
+  // distinct from the sector-median orange and the grey SPY on every theme, where
+  // the page accent (a warm gold on Amber/Carbon) would sit too close to orange.
   const chart = groupedBars(wins, [
-    { name: "This stock", values: wins.map((w) => stockReturns[w]), color: SERIES[0] },
+    { name: esc(ticker || "This stock"), values: wins.map((w) => stockReturns[w]), color: SERIES[0] },
     { name: `${esc(peers.sector)} median`, values: wins.map((w) => peers.median[w]), color: SERIES[1] },
     { name: "SPY", values: wins.map((w) => (peers.spy || {})[w]), color: C.muted },
   ], (v) => (v * 100).toFixed(0) + "%");

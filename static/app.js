@@ -7,7 +7,7 @@ let WINDOWS = ["1D", "1W", "1M", "3M", "6M", "9M", "1Y", "2Y", "3Y", "4Y", "5Y"]
 
 // Bump when the cached payload shape changes; stale local caches self-purge.
 // Keep in step with the server schema stamps in company.py / fundamentals.py.
-const APP_SCHEMA = "6";
+const APP_SCHEMA = "7";
 function purgeStaleCaches() {
   if (localStorage.getItem("ss-schema") === APP_SCHEMA) return;
   // Drop data caches + the retired filter-bar keys; keep theme + the new ss-table.
