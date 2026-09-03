@@ -3,6 +3,13 @@
 let C = { accent: "#4c9aff", up: "#3fb950", down: "#f85149", flat: "#d29922",
           muted: "#8b96a5", line: "#2a3140", panel: "#1c2230", text: "#e6edf3" };
 
+// Fixed categorical palette for multi-series charts. The semantic theme tokens
+// (accent / flat / up) collide on some themes — accent === flat on Amber, near
+// so on Carbon — which made two lines in one chart the same colour. These three
+// hues stay put across every theme; order is fixed. Validated colourblind-safe
+// (all-pairs) against both a dark and a light chart surface.
+const SERIES = ["#3987e5", "#d95926", "#199e70"];
+
 function palette() {
   const cs = getComputedStyle(document.documentElement);
   const g = (n, fb) => (cs.getPropertyValue(n).trim() || fb);
@@ -313,11 +320,11 @@ function fundamentalsSection(fu, pe) {
 
   html += `<div class="grid2">
     <div class="card"><h3>Revenue &amp; YoY growth</h3>${barsWithLine(yr, fu.revenue, fu.revenue_yoy, {
-      barColor: C.accent, lineColor: C.flat, barFmt: money })}</div>
+      barColor: SERIES[0], lineColor: SERIES[1], barFmt: money })}</div>
     <div class="card"><h3>Margins</h3>${multiLine(yr, [
-      { name: "Gross", values: fu.gross_margin, color: C.accent },
-      { name: "Operating", values: fu.operating_margin, color: C.flat },
-      { name: "Net", values: fu.net_margin, color: C.up },
+      { name: "Gross", values: fu.gross_margin, color: SERIES[0] },
+      { name: "Operating", values: fu.operating_margin, color: SERIES[1] },
+      { name: "Net", values: fu.net_margin, color: SERIES[2] },
     ])}</div>
   </div>`;
 
@@ -336,8 +343,8 @@ function fundamentalsSection(fu, pe) {
 
   if (q.labels && q.labels.length) {
     html += `<div class="card"><h3>Quarterly revenue &amp; net income</h3>${groupedBars(q.labels, [
-      { name: "Revenue", values: q.revenue, color: C.accent },
-      { name: "Net income", values: q.net_income, color: C.up },
+      { name: "Revenue", values: q.revenue, color: SERIES[0] },
+      { name: "Net income", values: q.net_income, color: SERIES[2] },
     ], money)}</div>`;
   }
 
@@ -536,8 +543,8 @@ function peerSection(peers, stockReturns) {
     ? `Ranks <b>#${peers.rank}</b> of ${peers.count} in ${esc(peers.sector)} by 12-month return.`
     : "";
   const chart = groupedBars(wins, [
-    { name: "This stock", values: wins.map((w) => stockReturns[w]), color: C.accent },
-    { name: `${esc(peers.sector)} median`, values: wins.map((w) => peers.median[w]), color: C.flat },
+    { name: "This stock", values: wins.map((w) => stockReturns[w]), color: SERIES[0] },
+    { name: `${esc(peers.sector)} median`, values: wins.map((w) => peers.median[w]), color: SERIES[1] },
     { name: "SPY", values: wins.map((w) => (peers.spy || {})[w]), color: C.muted },
   ], (v) => (v * 100).toFixed(0) + "%");
   return `<div class="card"><h3>Peers — vs ${esc(peers.sector)} sector</h3>
