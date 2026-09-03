@@ -138,9 +138,9 @@ copy, the app could sit on day-old data indefinitely. Don't reintroduce it. Inst
 
 ## Frontend gotchas (the ones that bite)
 - **Global-scope sharing:** `company.js` and `app.js` are plain `<script>`s sharing the
-  global lexical env. `company.js` declares `esc num fmtPct cls money C palette
+  global lexical env. `company.js` declares `esc num fmtPct cls money C SERIES palette
   buildProfileHTML newsCard kvRows lineChart returnBars targetGauge ratingBar barChart
-  groupedBars multiLine barsWithLine peHistoryChart multiLineRaw peerSection`. `app.js`
+  groupedBars multiLine peHistoryChart multiLineRaw peerSection`. `app.js`
   must NOT redeclare any of them (`const` redeclaration across scripts = SyntaxError that
   kills both). `app.js` owns `$ WINDOWS pct fmtAge median State STX WL` + SPA logic.
   `company.js` must not use `app.js`-only names (`pct` etc.) — it self-boots only on `body.pb`.
@@ -154,7 +154,17 @@ copy, the app could sit on day-old data indefinitely. Don't reintroduce it. Inst
   The old per-window benchmark line (`lineFor` / `isSpyLine` / `ceilNum`) is gone.
 - **Load order:** `company.js` before `app.js` in both HTML files.
 - **Charts are theme-aware:** `palette()` reads CSS vars into `C` at render time; a theme
-  switch re-renders so SVG colors follow.
+  switch re-renders so SVG colors follow. **Multi-series** charts (Margins, Revenue+YoY,
+  Peers, quarterly) do *not* use the theme tokens for series color — `--accent` and `--flat`
+  are the same hex on Amber and nearly so on Carbon, which merged two lines. They use the
+  fixed `SERIES` palette (blue/orange/green, colorblind-checked on light + dark). Chrome
+  (grid, axes, labels, benchmark tick) stays theme-tokened.
+- **No dual-axis charts.** The Revenue chart shows revenue bars on one $-scale; YoY growth
+  is a per-bar `+/-%` annotation via `barChart`'s `opts.deltas`, not a second y-scale. The
+  old `barsWithLine` helper (two hidden scales) is gone — don't bring it back.
+- **SVG marks carry `<title>`** for native hover tooltips (no JS): `barChart`, `groupedBars`,
+  `multiLine`, `multiLineRaw`, `returnBars`. Overlapping line markers get a 1px `C.panel`
+  ring so they stay countable where series cross.
 - **yfinance sector label** differs from the GICS label used in the screen — peers match on
   the screen's sector, not `profile.identity.sector`.
 - **The intro splash spans two files.** Its markup + inline IIFE live in `index.html`; its

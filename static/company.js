@@ -249,7 +249,7 @@ function returnBars(rets, excess) {
     if (r != null) {
       const col = r > 0.02 ? C.up : r < -0.02 ? C.down : C.flat;
       const yTop = Math.min(base, yv(r)), h = Math.abs(base - yv(r));
-      svg += `<rect x="${cx - bw * 0.28}" y="${yTop.toFixed(1)}" width="${(bw * 0.56).toFixed(1)}" height="${Math.max(1, h).toFixed(1)}" rx="2" fill="${col}"/>`;
+      svg += `<rect x="${(cx - bw * 0.28).toFixed(1)}" y="${yTop.toFixed(1)}" width="${(bw * 0.56).toFixed(1)}" height="${Math.max(1, h).toFixed(1)}" rx="2" fill="${col}"><title>${w}: ${fmtPct(r)}${bv != null ? ` · SPY ${fmtPct(bv)}` : ""}</title></rect>`;
       svg += `<text x="${cx}" y="${(r >= 0 ? yTop - 5 : yTop + h + 12).toFixed(1)}" fill="${C.text}" font-size="10" text-anchor="middle">${fmtPct(r, 0)}</text>`;
     }
     if (bv != null) {
@@ -257,7 +257,7 @@ function returnBars(rets, excess) {
     }
     svg += `<text x="${cx}" y="${H - 7}" fill="${C.muted}" font-size="11" text-anchor="middle">${w}</text>`;
   });
-  svg += `</svg><div class="legend"><span><i style="background:${C.accent};"></i>stock return</span><span><i style="background:${C.muted}"></i>SPY (tick)</span></div>`;
+  svg += `</svg><div class="legend"><span><i style="background:${C.up}"></i>gain</span><span><i style="background:${C.down}"></i>loss</span><span><i style="background:${C.muted}"></i>SPY (tick)</span></div>`;
   return svg;
 }
 
@@ -273,8 +273,8 @@ function targetGauge(t) {
      <text x="${x(v).toFixed(1)}" y="${up ? 12 : 60}" fill="${col}" font-size="10" text-anchor="middle">${label} $${v.toFixed(0)}</text>`;
   return `<svg viewBox="0 0 ${W} ${H}" class="gauge" role="img">
     <line x1="${x(t.low).toFixed(1)}" y1="32" x2="${x(t.high).toFixed(1)}" y2="32" stroke="${C.line}" stroke-width="6" stroke-linecap="round"/>
-    ${mk(t.mean, C.accent, "mean", true)}
-    ${mk(t.current, C.flat, "now", false)}
+    ${mk(t.mean, SERIES[0], "mean", true)}
+    ${mk(t.current, C.text, "now", false)}
     ${mk(t.low, C.muted, "low", true)}
     ${mk(t.high, C.muted, "high", true)}
   </svg>`;
@@ -319,8 +319,8 @@ function fundamentalsSection(fu, pe) {
   let html = `<h2 class="secdiv">Fundamentals — ${yr[0]}–${yr[yr.length - 1]}</h2>`;
 
   html += `<div class="grid2">
-    <div class="card"><h3>Revenue &amp; YoY growth</h3>${barsWithLine(yr, fu.revenue, fu.revenue_yoy, {
-      barColor: SERIES[0], lineColor: SERIES[1], barFmt: money })}</div>
+    <div class="card"><h3>Revenue &amp; YoY growth</h3>${barChart(yr, fu.revenue, {
+      fmt: money, color: SERIES[0], deltas: fu.revenue_yoy })}</div>
     <div class="card"><h3>Margins</h3>${multiLine(yr, [
       { name: "Gross", values: fu.gross_margin, color: SERIES[0] },
       { name: "Operating", values: fu.operating_margin, color: SERIES[1] },
@@ -381,14 +381,21 @@ function _bounds(all) {
   if (!v.length) return null;
   let lo = Math.min(0, ...v), hi = Math.max(0, ...v);
   if (lo === hi) hi = lo + 1;
-  return { lo, hi };
+  // Headroom past the data on whichever side leaves zero, so the value labels
+  // that sit just outside each bar don't collide with the axis labels.
+  const p = (hi - lo) * 0.08;
+  return { lo: lo < 0 ? lo - p : lo, hi: hi > 0 ? hi + p : hi };
 }
 
+// Single-series bars. `opts.deltas` (array parallel to values, fractions) prints a
+// small red/green change figure above each bar — used for the revenue chart's YoY
+// growth, which is a per-bar annotation, not a second axis.
 function barChart(labels, values, opts = {}) {
   const b = _bounds(values || []);
   if (!b) return `<div class="na">No data.</div>`;
   const fmt = opts.fmt || ((v) => v);
-  const W = 420, H = 230, padT = 22, padB = 26, padX = 10;
+  const dels = opts.deltas || [];
+  const W = 420, H = 230, padT = dels.length ? 30 : 22, padB = 26, padX = 10;
   const n = labels.length, bw = (W - 2 * padX) / n;
   const y = (v) => padT + (1 - (v - b.lo) / (b.hi - b.lo)) * (H - padT - padB);
   const y0 = y(0);
@@ -399,12 +406,18 @@ function barChart(labels, values, opts = {}) {
     if (v != null) {
       const col = opts.color || (opts.colorFn ? opts.colorFn(v) : C.accent);
       const top = Math.min(y0, y(v)), h = Math.max(1, Math.abs(y0 - y(v)));
-      svg += `<rect x="${cx - bw * 0.3}" y="${top.toFixed(1)}" width="${(bw * 0.6).toFixed(1)}" height="${h.toFixed(1)}" rx="2" fill="${col}"/>`;
-      svg += `<text x="${cx}" y="${(v >= 0 ? top - 5 : top + h + 12).toFixed(1)}" fill="${C.text}" font-size="9.5" text-anchor="middle">${fmt(v)}</text>`;
+      const lblY = v >= 0 ? top - 5 : top + h + 12;
+      svg += `<rect x="${(cx - bw * 0.3).toFixed(1)}" y="${top.toFixed(1)}" width="${(bw * 0.6).toFixed(1)}" height="${h.toFixed(1)}" rx="2" fill="${col}"><title>${lab}: ${fmt(v)}</title></rect>`;
+      svg += `<text x="${cx}" y="${lblY.toFixed(1)}" fill="${C.text}" font-size="9.5" text-anchor="middle">${fmt(v)}</text>`;
+      const d = dels[i];
+      if (d != null) svg += `<text x="${cx}" y="${(lblY - 10).toFixed(1)}" fill="${d >= 0 ? C.up : C.down}" font-size="9" text-anchor="middle">${d >= 0 ? "+" : ""}${(d * 100).toFixed(0)}%</text>`;
     }
     svg += `<text x="${cx}" y="${H - 8}" fill="${C.muted}" font-size="10.5" text-anchor="middle">${lab}</text>`;
   });
-  return svg + `</svg>`;
+  if (dels.length)
+    svg += `</svg><div class="legend"><span><i style="background:${opts.color || C.accent}"></i>Revenue</span><span>YoY growth above each bar (<b style="color:${C.up}">+</b> / <b style="color:${C.down}">−</b>)</span></div>`;
+  else svg += `</svg>`;
+  return svg;
 }
 
 function groupedBars(labels, series, fmt) {
@@ -423,7 +436,7 @@ function groupedBars(labels, series, fmt) {
       const v = (s.values || [])[i];
       if (v == null) return;
       const x = gx + bw * j, top = Math.min(y0, y(v)), h = Math.max(1, Math.abs(y0 - y(v)));
-      svg += `<rect x="${x.toFixed(1)}" y="${top.toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="1.5" fill="${s.color}"/>`;
+      svg += `<rect x="${x.toFixed(1)}" y="${top.toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="1.5" fill="${s.color}"><title>${s.name} ${lab}: ${fmt ? fmt(v) : v}</title></rect>`;
     });
     svg += `<text x="${(padX + group * i + group / 2).toFixed(1)}" y="${H - 8}" fill="${C.muted}" font-size="10.5" text-anchor="middle">${lab}</text>`;
   });
@@ -451,51 +464,14 @@ function multiLine(labels, series) {
   series.forEach((s) => {
     const pts = (s.values || []).map((v, i) => (v == null ? null : `${x(i).toFixed(1)},${y(v).toFixed(1)}`)).filter(Boolean);
     if (pts.length) svg += `<polyline points="${pts.join(" ")}" fill="none" stroke="${s.color}" stroke-width="2.2"/>`;
-    (s.values || []).forEach((v, i) => { if (v != null) svg += `<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="2.6" fill="${s.color}"/>`; });
+    // A thin surface-coloured ring keeps two markers legible where the lines cross.
+    (s.values || []).forEach((v, i) => {
+      if (v == null) return;
+      svg += `<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="2.8" fill="${s.color}" stroke="${C.panel}" stroke-width="1"><title>${s.name} ${labels[i]}: ${fmtPct(v)}</title></circle>`;
+    });
   });
   svg += `</svg><div class="legend">` +
     series.map((s) => `<span><i style="background:${s.color}"></i>${s.name}</span>`).join("") + `</div>`;
-  return svg;
-}
-
-// Bars (left axis) with a line overlay (right axis, e.g. YoY %).
-function barsWithLine(labels, barVals, lineVals, opts = {}) {
-  const bb = _bounds(barVals || []);
-  if (!bb) return `<div class="na">No data.</div>`;
-  const barFmt = opts.barFmt || ((v) => v);
-  const W = 420, H = 230, padT = 22, padB = 26, padL = 10, padR = 34;
-  const n = labels.length, bw = (W - padL - padR) / n;
-  const yb = (v) => padT + (1 - (v - bb.lo) / (bb.hi - bb.lo)) * (H - padT - padB);
-  const y0 = yb(0);
-
-  const lv = (lineVals || []).filter((v) => v != null);
-  const lb = lv.length ? { lo: Math.min(0, ...lv), hi: Math.max(0, ...lv) } : null;
-  if (lb && lb.lo === lb.hi) lb.hi = lb.lo + 0.01;
-  const yl = (v) => padT + (1 - (v - lb.lo) / (lb.hi - lb.lo)) * (H - padT - padB);
-
-  let svg = `<svg viewBox="0 0 ${W} ${H}" class="chart" role="img">
-    <line x1="${padL}" y1="${y0.toFixed(1)}" x2="${W - padR}" y2="${y0.toFixed(1)}" stroke="${C.muted}" opacity=".4"/>`;
-  labels.forEach((lab, i) => {
-    const v = barVals[i], cx = padL + bw * i + bw / 2;
-    if (v != null) {
-      const top = Math.min(y0, yb(v)), h = Math.max(1, Math.abs(y0 - yb(v)));
-      svg += `<rect x="${cx - bw * 0.3}" y="${top.toFixed(1)}" width="${(bw * 0.6).toFixed(1)}" height="${h.toFixed(1)}" rx="2" fill="${opts.barColor || C.accent}"/>`;
-      svg += `<text x="${cx}" y="${(top - 5).toFixed(1)}" fill="${C.text}" font-size="9" text-anchor="middle">${barFmt(v)}</text>`;
-    }
-    svg += `<text x="${cx}" y="${H - 8}" fill="${C.muted}" font-size="10.5" text-anchor="middle">${lab}</text>`;
-  });
-  if (lb) {
-    const pts = (lineVals || []).map((v, i) => v == null ? null :
-      `${(padL + bw * i + bw / 2).toFixed(1)},${yl(v).toFixed(1)}`).filter(Boolean);
-    if (pts.length) svg += `<polyline points="${pts.join(" ")}" fill="none" stroke="${opts.lineColor || C.flat}" stroke-width="2.2"/>`;
-    (lineVals || []).forEach((v, i) => {
-      if (v == null) return;
-      const cx = padL + bw * i + bw / 2;
-      svg += `<circle cx="${cx.toFixed(1)}" cy="${yl(v).toFixed(1)}" r="2.6" fill="${opts.lineColor || C.flat}"/>`;
-      svg += `<text x="${cx.toFixed(1)}" y="${(yl(v) - 6).toFixed(1)}" fill="${opts.lineColor || C.flat}" font-size="9" text-anchor="middle">${(v * 100).toFixed(0)}%</text>`;
-    });
-  }
-  svg += `</svg><div class="legend"><span><i style="background:${opts.barColor || C.accent}"></i>Revenue</span><span><i style="background:${opts.lineColor || C.flat}"></i>YoY growth</span></div>`;
   return svg;
 }
 
@@ -528,7 +504,7 @@ function multiLineRaw(labels, series, fmt) {
     if (pts.length) svg += `<polyline points="${pts.join(" ")}" fill="none" stroke="${s.color}" stroke-width="2.2"/>`;
     (s.values || []).forEach((v, i) => {
       if (v == null) return;
-      svg += `<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="2.8" fill="${s.color}"/>`;
+      svg += `<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="2.8" fill="${s.color}" stroke="${C.panel}" stroke-width="1"><title>${s.name} ${labels[i]}: ${fmt(v)}</title></circle>`;
       svg += `<text x="${x(i).toFixed(1)}" y="${(y(v) - 7).toFixed(1)}" fill="${C.text}" font-size="9.5" text-anchor="middle">${fmt(v)}</text>`;
     });
   });
