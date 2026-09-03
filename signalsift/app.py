@@ -1,7 +1,7 @@
 """Flask app: dashboard + JSON API for Signal Sift."""
 import os
 
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, Response, jsonify, render_template, request
 
 import config
 from . import analysts, cache, company, edgar, ghactions, screener
@@ -45,6 +45,41 @@ def _revalidate_html(resp):
     if resp.mimetype == "text/html":
         resp.headers["Cache-Control"] = "no-cache"
     return resp
+
+
+@app.after_request
+def _noindex(resp):
+    """Keep the app out of search results. Every route on this deployment goes
+    through the Flask function, so setting the header here covers pages, API
+    responses and static assets alike; the meta tag in the templates is the
+    belt-and-braces copy for anything that reads markup instead of headers."""
+    resp.headers["X-Robots-Tag"] = "noindex, nofollow, noarchive, nosnippet"
+    return resp
+
+
+# Crawling stays *allowed* on purpose. Disallowing it would stop crawlers from
+# fetching the pages at all, so they would never read the noindex above -- and a
+# blocked URL can still be listed from inbound links alone. Letting them fetch and
+# then telling them not to index is what actually keeps the app out of results.
+# Archivers are the exception: they honour a Disallow and ignore noindex, so they
+# are refused by name to keep the app out of the Wayback Machine.
+_ROBOTS = """User-agent: ia_archiver
+Disallow: /
+
+User-agent: archive.org_bot
+Disallow: /
+
+User-agent: Wayback
+Disallow: /
+
+User-agent: *
+Disallow:
+"""
+
+
+@app.route("/robots.txt")
+def robots():
+    return Response(_ROBOTS, mimetype="text/plain")
 
 
 @app.route("/")
