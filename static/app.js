@@ -83,11 +83,12 @@ function loadFilters() {
 
 // Per-column sort + filter for the two spreadsheet-style tables. This is the
 // state a future "saved screens" feature would name and persist.
+const DEFAULT_SORT = { key: "1Y", dir: "desc" };
 const STX = { key: "stx", headEl: "headRow", bodyEl: "rows", statusEl: "status-line",
-              noun: "names", sort: { key: "1Y", dir: "desc" }, filters: {},
+              noun: "names", sort: { ...DEFAULT_SORT }, filters: {},
               scope: () => (State.base ? State.base.rows : []) };
 const WL  = { key: "wl", headEl: "wlHead", bodyEl: "wlRows", statusEl: "wl-status",
-              noun: "watched", sort: { key: "1Y", dir: "desc" }, filters: {},
+              noun: "watched", sort: { ...DEFAULT_SORT }, filters: {},
               scope: () => (State.base ? State.base.rows.filter((r) => State.watchlist.has(r.ticker)) : []) };
 
 function saveTable() {
@@ -367,6 +368,9 @@ function wireColPop(ctx, c) {
     pop.querySelectorAll("#cpText, #cpMin, #cpMax").forEach((el) => (el.value = ""));
     pop.querySelectorAll(".cp-chk input").forEach((x) => (x.checked = true));
     delete ctx.filters[c.key];
+    // Clear undoes everything this popover did to the column — including a sort
+    // it owns. Revert to the table default so the ▲/▼ indicator goes away.
+    if (ctx.sort.key === c.key) ctx.sort = { ...DEFAULT_SORT };
     saveTable(); paint(ctx); closeColPop();
   });
   wire(".cp-done", () => commit(true));
