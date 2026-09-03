@@ -10,6 +10,29 @@ let C = { accent: "#4c9aff", up: "#3fb950", down: "#f85149", flat: "#d29922",
 // (all-pairs) against both a dark and a light chart surface.
 const SERIES = ["#3987e5", "#d95926", "#199e70"];
 
+// Shared mark specs (SVG viewBox units; the fundamental charts use a ~420-wide
+// box that renders ~500px, so 1 unit ≈ 1.2px). Thin marks, capped bars, generous
+// air — the data is the only thing allowed to be loud.
+const MARK = { barMax: 26, barGap: 2, radius: 4, line: 2, dot: 3.6, ring: 1.4 };
+
+// A column rounded only at the data end (top for ≥0, bottom for <0) and square at
+// the baseline, so every bar reads as growing from one line.
+function barPath(x, w, yEnd, yBase, r) {
+  r = Math.max(0, Math.min(r, w / 2, Math.abs(yBase - yEnd)));
+  const f = (a, b) => `${a.toFixed(1)},${b.toFixed(1)}`;
+  if (yEnd <= yBase) // points up
+    return `M${f(x, yBase)} L${f(x, yEnd + r)} Q${f(x, yEnd)} ${f(x + r, yEnd)} `
+      + `L${f(x + w - r, yEnd)} Q${f(x + w, yEnd)} ${f(x + w, yEnd + r)} L${f(x + w, yBase)} Z`;
+  return `M${f(x, yBase)} L${f(x, yEnd - r)} Q${f(x, yEnd)} ${f(x + r, yEnd)} `
+    + `L${f(x + w - r, yEnd)} Q${f(x + w, yEnd)} ${f(x + w, yEnd - r)} L${f(x + w, yBase)} Z`;
+}
+
+// Centre a bar in its slot, capped at MARK.barMax and leaving the surface gap.
+function barBox(cx, slot, frac) {
+  const w = Math.max(2, Math.min(slot * (frac ?? 1) - MARK.barGap, MARK.barMax));
+  return { x: cx - w / 2, w };
+}
+
 function palette() {
   const cs = getComputedStyle(document.documentElement);
   const g = (n, fb) => (cs.getPropertyValue(n).trim() || fb);
@@ -94,7 +117,7 @@ function buildProfileHTML(p) {
   html += `<div class="grid2">
     <div class="card wide"><h3>Price vs. S&amp;P 500 — 5-year trend (indexed to 100)</h3>
       ${lineChart(p.history)}
-      <div class="legend"><span><i style="background:${C.accent}"></i>${p.ticker}</span><span><i style="background:${C.muted}"></i>SPY</span></div>
+      <div class="legend"><span><i class="line" style="background:${C.accent}"></i>${p.ticker}</span><span><i class="line" style="background:${C.muted}"></i>SPY</span></div>
     </div>
     <div class="card"><h3>Trailing returns vs. SPY</h3>${returnBars(p.returns, p.excess)}</div>
   </div>`;
@@ -204,106 +227,148 @@ function kvRows(rows, colorize = false) {
 function lineChart(hist) {
   const s = (hist && hist.series) || [], b = (hist && hist.benchmark) || [];
   if (s.length < 2) return `<div class="na">No price history.</div>`;
-  const W = 820, H = 300, pad = 34;
+  const W = 840, H = 300, padL = 34, padR = 46, padT = 16, padB = 26;
   const all = s.map((d) => d.n).concat(b.map((d) => d.n));
   let lo = Math.min(...all), hi = Math.max(...all);
-  const padY = (hi - lo) * 0.08 || 1; lo -= padY; hi += padY;
-  const x = (i, arr) => pad + (i / (arr.length - 1)) * (W - 2 * pad);
-  const y = (v) => H - pad - ((v - lo) / (hi - lo)) * (H - 2 * pad);
+  const padY = (hi - lo) * 0.08 || 1; lo = Math.max(0, lo - padY); hi += padY;
+  const x = (i, arr) => padL + (i / (arr.length - 1)) * (W - padL - padR);
+  const y = (v) => H - padB - ((v - lo) / (hi - lo)) * (H - padT - padB);
   const path = (arr) => arr.map((d, i) => `${i ? "L" : "M"}${x(i, arr).toFixed(1)},${y(d.n).toFixed(1)}`).join(" ");
-  const area = `${path(s)} L${x(s.length - 1, s).toFixed(1)},${(H - pad)} L${pad},${(H - pad)} Z`;
-  const y100 = y(100);
+  const area = `${path(s)} L${x(s.length - 1, s).toFixed(1)},${y(lo).toFixed(1)} L${padL},${y(lo).toFixed(1)} Z`;
   const first = s[0].t, last = s[s.length - 1].t;
-  return `<svg viewBox="0 0 ${W} ${H}" class="chart" preserveAspectRatio="none" role="img">
-    <line x1="${pad}" y1="${y(hi).toFixed(1)}" x2="${W - pad}" y2="${y(hi).toFixed(1)}" stroke="${C.line}"/>
-    <line x1="${pad}" y1="${y(lo).toFixed(1)}" x2="${W - pad}" y2="${y(lo).toFixed(1)}" stroke="${C.line}"/>
-    <line x1="${pad}" y1="${y100.toFixed(1)}" x2="${W - pad}" y2="${y100.toFixed(1)}" stroke="${C.muted}" stroke-dasharray="4 4" opacity="0.5"/>
-    <path d="${area}" fill="${C.accent}" opacity="0.12"/>
-    <path d="${path(b)}" fill="none" stroke="${C.muted}" stroke-width="1.5"/>
-    <path d="${path(s)}" fill="none" stroke="${C.accent}" stroke-width="2.2"/>
-    <text x="${pad}" y="${(H - 8)}" fill="${C.muted}" font-size="11">${first}</text>
-    <text x="${W - pad}" y="${(H - 8)}" fill="${C.muted}" font-size="11" text-anchor="end">${last}</text>
-    <text x="${W - pad}" y="${(y(hi) + 12).toFixed(1)}" fill="${C.muted}" font-size="11" text-anchor="end">${hi.toFixed(0)}</text>
-    <text x="${W - pad}" y="${(y(lo) - 4).toFixed(1)}" fill="${C.muted}" font-size="11" text-anchor="end">${lo.toFixed(0)}</text>
+  const endS = s[s.length - 1].n, endB = b.length ? b[b.length - 1].n : null;
+  const tick = (v) => `<line x1="${padL}" y1="${y(v).toFixed(1)}" x2="${W - padR}" y2="${y(v).toFixed(1)}" stroke="${C.line}"/>`
+    + `<text x="${(W - padR + 6)}" y="${(y(v) + 3.5).toFixed(1)}" fill="${C.muted}" font-size="11">${v.toFixed(0)}</text>`;
+  return `<svg viewBox="0 0 ${W} ${H}" class="chart" role="img">
+    ${tick(hi)}${tick((hi + lo) / 2)}${tick(lo)}
+    <line x1="${padL}" y1="${y(100).toFixed(1)}" x2="${W - padR}" y2="${y(100).toFixed(1)}" stroke="${C.muted}" opacity="0.5"/>
+    <path d="${area}" fill="${C.accent}" opacity="0.10"/>
+    <path d="${path(b)}" fill="none" stroke="${C.muted}" stroke-width="1.5" stroke-linejoin="round"/>
+    <path d="${path(s)}" fill="none" stroke="${C.accent}" stroke-width="${MARK.line}" stroke-linejoin="round" stroke-linecap="round"/>
+    <circle cx="${x(s.length - 1, s).toFixed(1)}" cy="${y(endS).toFixed(1)}" r="${MARK.dot}" fill="${C.accent}" stroke="${C.panel}" stroke-width="${MARK.ring}"/>
+    ${endB != null ? `<circle cx="${x(b.length - 1, b).toFixed(1)}" cy="${y(endB).toFixed(1)}" r="${MARK.dot}" fill="${C.muted}" stroke="${C.panel}" stroke-width="${MARK.ring}"/>` : ""}
+    <text x="${padL}" y="${(H - 8)}" fill="${C.muted}" font-size="11">${first}</text>
+    <text x="${W - padR}" y="${(H - 8)}" fill="${C.muted}" font-size="11" text-anchor="end">${last}</text>
   </svg>`;
 }
 
+// Approx. calendar days for a "1D" / "3M" / "2Y" window token — used only to put
+// the windows in chronological order (the API dict isn't ordered).
+function winDays(w) {
+  const m = String(w).match(/^(\d+)\s*([DWMY])$/i);
+  if (!m) return 0;
+  return +m[1] * { D: 1, W: 7, M: 30, Y: 365 }[m[2].toUpperCase()];
+}
+
 function returnBars(rets, excess) {
-  const wins = Object.keys(rets);
+  const wins = Object.keys(rets).sort((a, b) => winDays(a) - winDays(b));
   if (!wins.length) return `<div class="na">No return data.</div>`;
-  const W = 420, H = 260, pad = 26, base = H / 2;
-  const bench = {}, vals = [];
+  const bench = {}, all = [];
   wins.forEach((w) => {
     bench[w] = (rets[w] != null && excess[w] != null) ? rets[w] - excess[w] : null;
-    if (rets[w] != null) vals.push(Math.abs(rets[w]));
-    if (bench[w] != null) vals.push(Math.abs(bench[w]));
+    if (rets[w] != null) all.push(rets[w]);
+    if (bench[w] != null) all.push(bench[w]);
   });
-  const max = Math.max(0.05, ...vals);
-  const bw = (W - 2 * pad) / wins.length;
-  const yv = (v) => base - (v / max) * (base - pad);
-  let svg = `<svg viewBox="0 0 ${W} ${H}" class="chart" role="img">
-    <line x1="${pad}" y1="${base}" x2="${W - pad}" y2="${base}" stroke="${C.muted}" opacity="0.6"/>`;
+  const b = _bounds(all);
+  if (!b) return `<div class="na">No return data.</div>`;
+  const W = 440, H = 244, padX = 14, padTop = 26, padBot = 28;
+  const slot = (W - 2 * padX) / wins.length;
+  const y = (v) => padTop + (1 - (v - b.lo) / (b.hi - b.lo)) * (H - padTop - padBot);
+  const y0 = y(0);
+  // Direct-label only the extremes; every value is in the hover title.
+  let hiW = null, loW = null;
+  wins.forEach((w) => {
+    if (rets[w] == null) return;
+    if (hiW == null || rets[w] > rets[hiW]) hiW = w;
+    if (loW == null || rets[w] < rets[loW]) loW = w;
+  });
+  let svg = `<svg viewBox="0 0 ${W} ${H}" class="chart" role="img">`
+    + `<line x1="${padX}" y1="${y0.toFixed(1)}" x2="${W - padX}" y2="${y0.toFixed(1)}" stroke="${C.line}"/>`;
   wins.forEach((w, i) => {
-    const cx = pad + bw * i + bw / 2;
+    const cx = padX + slot * i + slot / 2;
     const r = rets[w], bv = bench[w];
     if (r != null) {
       const col = r > 0.02 ? C.up : r < -0.02 ? C.down : C.flat;
-      const yTop = Math.min(base, yv(r)), h = Math.abs(base - yv(r));
-      svg += `<rect x="${(cx - bw * 0.28).toFixed(1)}" y="${yTop.toFixed(1)}" width="${(bw * 0.56).toFixed(1)}" height="${Math.max(1, h).toFixed(1)}" rx="2" fill="${col}"><title>${w}: ${fmtPct(r)}${bv != null ? ` · SPY ${fmtPct(bv)}` : ""}</title></rect>`;
-      svg += `<text x="${cx}" y="${(r >= 0 ? yTop - 5 : yTop + h + 12).toFixed(1)}" fill="${C.text}" font-size="10" text-anchor="middle">${fmtPct(r, 0)}</text>`;
+      const { x, w: bw } = barBox(cx, slot, 0.62);
+      svg += `<path d="${barPath(x, bw, y(r), y0, 3)}" fill="${col}" class="mk"><title>${w}: ${fmtPct(r)}${bv != null ? ` · SPY ${fmtPct(bv)}` : ""}</title></path>`;
+      if (w === hiW || w === loW) {
+        const lblY = r >= 0 ? Math.min(y(r), y0) - 6 : Math.max(y(r), y0) + 13;
+        svg += `<text x="${cx.toFixed(1)}" y="${lblY.toFixed(1)}" fill="${C.text}" font-size="10" font-weight="600" text-anchor="middle">${fmtPct(r, 0)}</text>`;
+      }
     }
-    if (bv != null) {
-      svg += `<line x1="${cx - bw * 0.32}" y1="${yv(bv).toFixed(1)}" x2="${cx + bw * 0.32}" y2="${yv(bv).toFixed(1)}" stroke="${C.muted}" stroke-width="2"/>`;
-    }
-    svg += `<text x="${cx}" y="${H - 7}" fill="${C.muted}" font-size="11" text-anchor="middle">${w}</text>`;
+    if (bv != null)
+      svg += `<line x1="${(cx - slot * 0.26).toFixed(1)}" y1="${y(bv).toFixed(1)}" x2="${(cx + slot * 0.26).toFixed(1)}" y2="${y(bv).toFixed(1)}" stroke="${C.muted}" stroke-width="2" stroke-linecap="round"><title>SPY ${w}: ${fmtPct(bv)}</title></line>`;
+    svg += `<text x="${cx.toFixed(1)}" y="${H - 9}" fill="${C.muted}" font-size="11" text-anchor="middle">${w}</text>`;
   });
-  svg += `</svg><div class="legend"><span><i style="background:${C.up}"></i>gain</span><span><i style="background:${C.down}"></i>loss</span><span><i style="background:${C.muted}"></i>SPY (tick)</span></div>`;
+  svg += `</svg><div class="legend"><span><i style="background:${C.up}"></i>gain</span><span><i style="background:${C.down}"></i>loss</span><span><i class="line" style="background:${C.muted}"></i>SPY</span><span class="legend-note">hover a bar for its value</span></div>`;
   return svg;
 }
 
 function targetGauge(t) {
   if (t.low == null || t.high == null || t.current == null)
     return `<div class="na" style="margin-bottom:10px">Analyst targets unavailable.</div>`;
-  const W = 380, H = 70, pad = 16;
+  const W = 380, H = 74, pad = 22, axis = 38;
   const lo = Math.min(t.low, t.current), hi = Math.max(t.high, t.current);
   const span = hi - lo || 1;
   const x = (v) => pad + ((v - lo) / span) * (W - 2 * pad);
-  const mk = (v, col, label, up) => v == null ? "" :
-    `<line x1="${x(v).toFixed(1)}" y1="18" x2="${x(v).toFixed(1)}" y2="46" stroke="${col}" stroke-width="2"/>
-     <text x="${x(v).toFixed(1)}" y="${up ? 12 : 60}" fill="${col}" font-size="10" text-anchor="middle">${label} $${v.toFixed(0)}</text>`;
+  // Keep end labels inside the box: nudge anchor as a point nears an edge.
+  const anchor = (v) => x(v) < pad + 24 ? "start" : x(v) > W - pad - 24 ? "end" : "middle";
+  const ax = (v) => { const a = anchor(v); return a === "start" ? x(v) - MARK.dot : a === "end" ? x(v) + MARK.dot : x(v); };
+  const tick = (v, label, up) => v == null ? "" :
+    `<line x1="${x(v).toFixed(1)}" y1="${axis - 7}" x2="${x(v).toFixed(1)}" y2="${axis + 7}" stroke="${C.muted}" stroke-width="1.5"/>`
+    + `<text x="${ax(v).toFixed(1)}" y="${up ? axis - 12 : axis + 18}" fill="${C.muted}" font-size="10" text-anchor="${anchor(v)}">${label} $${v.toFixed(0)}</text>`;
+  const dot = (v, col, label, up) => v == null ? "" :
+    `<circle cx="${x(v).toFixed(1)}" cy="${axis}" r="${MARK.dot}" fill="${col}" stroke="${C.panel}" stroke-width="${MARK.ring}"/>`
+    + `<text x="${ax(v).toFixed(1)}" y="${up ? axis - 12 : axis + 18}" fill="${col}" font-size="10" font-weight="600" text-anchor="${anchor(v)}">${label} $${v.toFixed(0)}</text>`;
   return `<svg viewBox="0 0 ${W} ${H}" class="gauge" role="img">
-    <line x1="${x(t.low).toFixed(1)}" y1="32" x2="${x(t.high).toFixed(1)}" y2="32" stroke="${C.line}" stroke-width="6" stroke-linecap="round"/>
-    ${mk(t.mean, SERIES[0], "mean", true)}
-    ${mk(t.current, C.text, "now", false)}
-    ${mk(t.low, C.muted, "low", true)}
-    ${mk(t.high, C.muted, "high", true)}
+    <line x1="${x(t.low).toFixed(1)}" y1="${axis}" x2="${x(t.high).toFixed(1)}" y2="${axis}" stroke="${C.line}" stroke-width="5" stroke-linecap="round"/>
+    <line x1="${x(Math.min(t.current, t.mean ?? t.current)).toFixed(1)}" y1="${axis}" x2="${x(Math.max(t.current, t.mean ?? t.current)).toFixed(1)}" y2="${axis}" stroke="${SERIES[0]}" stroke-width="5" stroke-linecap="round" opacity="0.5"/>
+    ${tick(t.low, "low", true)}
+    ${tick(t.high, "high", true)}
+    ${dot(t.mean, SERIES[0], "mean", true)}
+    ${dot(t.current, C.text, "now", false)}
   </svg>`;
 }
 
 function ratingBar(recs) {
   if (!recs || !recs.length) return `<div class="na">Rating breakdown unavailable.</div>`;
   const r = recs[0];
+  // Buy → sell is a diverging scale: green poles, a neutral-grey "hold" midpoint.
   const seg = [
     ["Strong buy", r.strongBuy, C.up],
-    ["Buy", r.buy, "#6fbf5f"],
-    ["Hold", r.hold, C.flat],
-    ["Sell", r.sell, "#e06c50"],
+    ["Buy", r.buy, mix(C.up, C.muted, 0.45)],
+    ["Hold", r.hold, C.muted],
+    ["Sell", r.sell, mix(C.down, C.muted, 0.45)],
     ["Strong sell", r.strongSell, C.down],
   ].filter(([, v]) => v != null);
   const total = seg.reduce((s, [, v]) => s + (v || 0), 0);
   if (!total) return `<div class="na">Rating breakdown unavailable.</div>`;
-  const W = 380, H = 26; let xacc = 0;
+  const W = 380, H = 24, gap = 2; let xacc = 0;
   let bars = "";
-  seg.forEach(([, v, col]) => {
+  seg.forEach(([n, v, col]) => {
     const w = (v / total) * W; if (w <= 0) return;
-    bars += `<rect x="${xacc.toFixed(1)}" y="0" width="${w.toFixed(1)}" height="${H}" fill="${col}"/>`;
-    if (w > 24) bars += `<text x="${(xacc + w / 2).toFixed(1)}" y="17" fill="#06122a" font-size="11" font-weight="700" text-anchor="middle">${v}</text>`;
+    bars += `<rect x="${xacc.toFixed(1)}" y="0" width="${Math.max(0, w - gap).toFixed(1)}" height="${H}" rx="2" fill="${col}"><title>${n}: ${v}</title></rect>`;
+    if (w > 22) bars += `<text x="${(xacc + (w - gap) / 2).toFixed(1)}" y="16" fill="#fff" font-size="11" font-weight="700" text-anchor="middle">${v}</text>`;
     xacc += w;
   });
   const legend = seg.map(([n, v, col]) =>
     `<span><i style="background:${col}"></i>${n} (${v})</span>`).join("");
   return `<svg viewBox="0 0 ${W} ${H}" class="ratingbar" preserveAspectRatio="none" role="img">${bars}</svg>
     <div class="legend wrap">${legend}</div>`;
+}
+
+// Blend two hex colours (t = weight of b). Used for the rating scale's mid steps.
+function mix(a, b, t) {
+  const h = (c) => {
+    c = String(c).trim();
+    const rgb = c.match(/rgba?\(([^)]+)\)/);
+    if (rgb) return rgb[1].split(",").slice(0, 3).map((x) => parseInt(x, 10));
+    if (c[0] === "#" && c.length === 4) c = "#" + [...c.slice(1)].map((x) => x + x).join("");
+    return c[0] === "#" ? [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16)) : null;
+  };
+  const A = h(a), B = h(b);
+  if (!A || !B) return a;
+  return "#" + A.map((v, i) => Math.round(v + (B[i] - v) * t).toString(16).padStart(2, "0")).join("");
 }
 
 // ---------- Fundamentals ----------
@@ -395,27 +460,27 @@ function barChart(labels, values, opts = {}) {
   if (!b) return `<div class="na">No data.</div>`;
   const fmt = opts.fmt || ((v) => v);
   const dels = opts.deltas || [];
-  const W = 420, H = 230, padT = dels.length ? 30 : 22, padB = 26, padX = 10;
-  const n = labels.length, bw = (W - 2 * padX) / n;
+  const W = 440, H = 232, padT = dels.length ? 34 : 24, padB = 28, padX = 12;
+  const n = labels.length, slot = (W - 2 * padX) / n;
   const y = (v) => padT + (1 - (v - b.lo) / (b.hi - b.lo)) * (H - padT - padB);
   const y0 = y(0);
   let svg = `<svg viewBox="0 0 ${W} ${H}" class="chart" role="img">
-    <line x1="${padX}" y1="${y0.toFixed(1)}" x2="${W - padX}" y2="${y0.toFixed(1)}" stroke="${C.muted}" opacity=".5"/>`;
+    <line x1="${padX}" y1="${y0.toFixed(1)}" x2="${W - padX}" y2="${y0.toFixed(1)}" stroke="${C.line}"/>`;
   labels.forEach((lab, i) => {
-    const v = values[i], cx = padX + bw * i + bw / 2;
+    const v = values[i], cx = padX + slot * i + slot / 2;
     if (v != null) {
       const col = opts.color || (opts.colorFn ? opts.colorFn(v) : C.accent);
-      const top = Math.min(y0, y(v)), h = Math.max(1, Math.abs(y0 - y(v)));
-      const lblY = v >= 0 ? top - 5 : top + h + 12;
-      svg += `<rect x="${(cx - bw * 0.3).toFixed(1)}" y="${top.toFixed(1)}" width="${(bw * 0.6).toFixed(1)}" height="${h.toFixed(1)}" rx="2" fill="${col}"><title>${lab}: ${fmt(v)}</title></rect>`;
-      svg += `<text x="${cx}" y="${lblY.toFixed(1)}" fill="${C.text}" font-size="9.5" text-anchor="middle">${fmt(v)}</text>`;
+      const { x, w } = barBox(cx, slot, 0.7);
+      const yv = y(v), lblY = v >= 0 ? Math.min(yv, y0) - 6 : Math.max(yv, y0) + 13;
+      svg += `<path d="${barPath(x, w, yv, y0, MARK.radius)}" fill="${col}" class="mk"><title>${lab}: ${fmt(v)}</title></path>`;
+      svg += `<text x="${cx.toFixed(1)}" y="${lblY.toFixed(1)}" fill="${C.text}" font-size="10" text-anchor="middle">${fmt(v)}</text>`;
       const d = dels[i];
-      if (d != null) svg += `<text x="${cx}" y="${(lblY - 10).toFixed(1)}" fill="${d >= 0 ? C.up : C.down}" font-size="9" text-anchor="middle">${d >= 0 ? "+" : ""}${(d * 100).toFixed(0)}%</text>`;
+      if (d != null) svg += `<text x="${cx.toFixed(1)}" y="${(lblY - 11).toFixed(1)}" fill="${d >= 0 ? C.up : C.down}" font-size="9.5" font-weight="600" text-anchor="middle">${d >= 0 ? "+" : "−"}${Math.abs(d * 100).toFixed(0)}%</text>`;
     }
-    svg += `<text x="${cx}" y="${H - 8}" fill="${C.muted}" font-size="10.5" text-anchor="middle">${lab}</text>`;
+    svg += `<text x="${cx.toFixed(1)}" y="${H - 9}" fill="${C.muted}" font-size="11" text-anchor="middle">${lab}</text>`;
   });
   if (dels.length)
-    svg += `</svg><div class="legend"><span><i style="background:${opts.color || C.accent}"></i>Revenue</span><span>YoY growth above each bar (<b style="color:${C.up}">+</b> / <b style="color:${C.down}">−</b>)</span></div>`;
+    svg += `</svg><div class="legend"><span><i style="background:${opts.color || C.accent}"></i>Revenue</span><span class="legend-note">YoY growth <b style="color:${C.up}">▲</b> / <b style="color:${C.down}">▼</b> above each bar</span></div>`;
   else svg += `</svg>`;
   return svg;
 }
@@ -424,91 +489,91 @@ function groupedBars(labels, series, fmt) {
   const all = series.flatMap((s) => s.values || []);
   const b = _bounds(all);
   if (!b) return `<div class="na">No data.</div>`;
-  const W = 420, H = 230, padT = 22, padB = 26, padX = 10;
-  const n = labels.length, k = series.length, group = (W - 2 * padX) / n, bw = group * 0.72 / k;
+  const W = 440, H = 232, padT = 22, padB = 28, padX = 12;
+  const n = labels.length, k = series.length, slot = (W - 2 * padX) / n;
+  const bw = Math.min((slot * 0.78) / k, 18);
   const y = (v) => padT + (1 - (v - b.lo) / (b.hi - b.lo)) * (H - padT - padB);
   const y0 = y(0);
   let svg = `<svg viewBox="0 0 ${W} ${H}" class="chart" role="img">
-    <line x1="${padX}" y1="${y0.toFixed(1)}" x2="${W - padX}" y2="${y0.toFixed(1)}" stroke="${C.muted}" opacity=".5"/>`;
+    <line x1="${padX}" y1="${y0.toFixed(1)}" x2="${W - padX}" y2="${y0.toFixed(1)}" stroke="${C.line}"/>`;
   labels.forEach((lab, i) => {
-    const gx = padX + group * i + group * 0.14;
+    const gcx = padX + slot * i + slot / 2, x0 = gcx - (bw * k) / 2;
     series.forEach((s, j) => {
       const v = (s.values || [])[i];
       if (v == null) return;
-      const x = gx + bw * j, top = Math.min(y0, y(v)), h = Math.max(1, Math.abs(y0 - y(v)));
-      svg += `<rect x="${x.toFixed(1)}" y="${top.toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="1.5" fill="${s.color}"><title>${s.name} ${lab}: ${fmt ? fmt(v) : v}</title></rect>`;
+      const x = x0 + bw * j + MARK.barGap / 2, w = bw - MARK.barGap;
+      svg += `<path d="${barPath(x, w, y(v), y0, 3)}" fill="${s.color}" class="mk"><title>${s.name} · ${lab}: ${fmt ? fmt(v) : v}</title></path>`;
     });
-    svg += `<text x="${(padX + group * i + group / 2).toFixed(1)}" y="${H - 8}" fill="${C.muted}" font-size="10.5" text-anchor="middle">${lab}</text>`;
+    svg += `<text x="${gcx.toFixed(1)}" y="${H - 9}" fill="${C.muted}" font-size="11" text-anchor="middle">${lab}</text>`;
   });
   svg += `</svg><div class="legend">` +
     series.map((s) => `<span><i style="background:${s.color}"></i>${s.name}</span>`).join("") + `</div>`;
   return svg;
 }
 
-function multiLine(labels, series) {
+// A short line-key swatch reads truer for a line chart than a filled square.
+function lineLegend(series) {
+  return `<div class="legend">` + series.map((s) =>
+    `<span><i class="line" style="background:${s.color}"></i>${s.name}</span>`).join("") + `</div>`;
+}
+
+// Shared multi-series line renderer. fmt formats the y ticks + tooltip values;
+// `raw` keeps values as-is (P/E), otherwise they're percentages.
+function _lines(labels, series, { fmt, raw, area } = {}) {
   const all = series.flatMap((s) => s.values || []).filter((v) => v != null);
   if (!all.length) return `<div class="na">No data.</div>`;
   let lo = Math.min(...all), hi = Math.max(...all);
-  const pad = (hi - lo) * 0.12 || 0.02; lo -= pad; hi += pad;
-  const W = 420, H = 230, padT = 16, padB = 26, padX = 30;
+  const p = (hi - lo) * 0.14 || (raw ? 1 : 0.02);
+  lo = raw ? Math.max(0, lo - p) : lo - p;
+  hi += p;
+  const f = fmt || ((v) => `${(v * 100).toFixed(0)}%`);
+  const W = 440, H = 232, padT = 18, padB = 28, padL = 40, padR = 12;
   const n = labels.length;
-  const x = (i) => padX + (n === 1 ? 0.5 : i / (n - 1)) * (W - padX - 10);
+  const x = (i) => padL + (n === 1 ? 0.5 : i / (n - 1)) * (W - padL - padR);
   const y = (v) => padT + (1 - (v - lo) / (hi - lo)) * (H - padT - padB);
   let svg = `<svg viewBox="0 0 ${W} ${H}" class="chart" role="img">`;
   [hi, (hi + lo) / 2, lo].forEach((gv) => {
-    svg += `<line x1="${padX}" y1="${y(gv).toFixed(1)}" x2="${W - 10}" y2="${y(gv).toFixed(1)}" stroke="${C.line}"/>
-      <text x="${padX - 4}" y="${(y(gv) + 3).toFixed(1)}" fill="${C.muted}" font-size="9.5" text-anchor="end">${(gv * 100).toFixed(0)}%</text>`;
+    svg += `<line x1="${padL}" y1="${y(gv).toFixed(1)}" x2="${W - padR}" y2="${y(gv).toFixed(1)}" stroke="${C.line}"/>`
+      + `<text x="${(padL - 6).toFixed(1)}" y="${(y(gv) + 3.5).toFixed(1)}" fill="${C.muted}" font-size="10" text-anchor="end">${f(gv)}</text>`;
   });
   labels.forEach((lab, i) =>
-    svg += `<text x="${x(i).toFixed(1)}" y="${H - 8}" fill="${C.muted}" font-size="10.5" text-anchor="middle">${lab}</text>`);
+    svg += `<text x="${x(i).toFixed(1)}" y="${H - 9}" fill="${C.muted}" font-size="11" text-anchor="middle">${lab}</text>`);
+  if (area && series.length === 1) {
+    const s = series[0];
+    const pts = (s.values || []).map((v, i) => v == null ? null : [x(i), y(v)]).filter(Boolean);
+    if (pts.length > 1) {
+      const d = pts.map(([px, py], i) => `${i ? "L" : "M"}${px.toFixed(1)},${py.toFixed(1)}`).join(" ");
+      svg += `<path d="${d} L${pts[pts.length - 1][0].toFixed(1)},${y(lo).toFixed(1)} L${pts[0][0].toFixed(1)},${y(lo).toFixed(1)} Z" fill="${s.color}" opacity="0.1"/>`;
+    }
+  }
   series.forEach((s) => {
     const pts = (s.values || []).map((v, i) => (v == null ? null : `${x(i).toFixed(1)},${y(v).toFixed(1)}`)).filter(Boolean);
-    if (pts.length) svg += `<polyline points="${pts.join(" ")}" fill="none" stroke="${s.color}" stroke-width="2.2"/>`;
-    // A thin surface-coloured ring keeps two markers legible where the lines cross.
+    if (pts.length) svg += `<polyline points="${pts.join(" ")}" fill="none" stroke="${s.color}" stroke-width="${MARK.line}" stroke-linejoin="round" stroke-linecap="round"/>`;
+    // Surface-coloured ring keeps two markers legible where the lines cross.
     (s.values || []).forEach((v, i) => {
       if (v == null) return;
-      svg += `<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="2.8" fill="${s.color}" stroke="${C.panel}" stroke-width="1"><title>${s.name} ${labels[i]}: ${fmtPct(v)}</title></circle>`;
+      svg += `<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="${MARK.dot}" fill="${s.color}" stroke="${C.panel}" stroke-width="${MARK.ring}" class="mk"><title>${s.name} · ${labels[i]}: ${f(v)}</title></circle>`;
     });
   });
-  svg += `</svg><div class="legend">` +
-    series.map((s) => `<span><i style="background:${s.color}"></i>${s.name}</span>`).join("") + `</div>`;
+  svg += `</svg>` + (series.length > 1 ? lineLegend(series) : "");
   return svg;
+}
+
+function multiLine(labels, series) {
+  return _lines(labels, series, {});
 }
 
 function peHistoryChart(pe) {
   if (!pe || !pe.pe || !pe.pe.some((v) => v != null))
     return `<div class="na">P/E history unavailable.</div>`;
-  return multiLineRaw(pe.years, [{ name: "P/E", values: pe.pe, color: C.accent }],
+  return multiLineRaw(pe.years, [{ name: "P/E", values: pe.pe, color: SERIES[0] }],
     (v) => v.toFixed(0) + "x");
 }
 
-// Line chart for non-percent values (e.g. P/E multiple).
+// Line chart for non-percent values (e.g. P/E multiple) — single-series gets a
+// soft area fill under the line.
 function multiLineRaw(labels, series, fmt) {
-  const all = series.flatMap((s) => s.values || []).filter((v) => v != null);
-  if (!all.length) return `<div class="na">No data.</div>`;
-  let lo = Math.min(...all), hi = Math.max(...all);
-  const pad = (hi - lo) * 0.15 || 1; lo = Math.max(0, lo - pad); hi += pad;
-  const W = 420, H = 230, padT = 16, padB = 26, padX = 34;
-  const n = labels.length;
-  const x = (i) => padX + (n === 1 ? 0.5 : i / (n - 1)) * (W - padX - 10);
-  const y = (v) => padT + (1 - (v - lo) / (hi - lo)) * (H - padT - padB);
-  let svg = `<svg viewBox="0 0 ${W} ${H}" class="chart" role="img">`;
-  [hi, (hi + lo) / 2, lo].forEach((gv) => {
-    svg += `<line x1="${padX}" y1="${y(gv).toFixed(1)}" x2="${W - 10}" y2="${y(gv).toFixed(1)}" stroke="${C.line}"/>
-      <text x="${padX - 4}" y="${(y(gv) + 3).toFixed(1)}" fill="${C.muted}" font-size="9.5" text-anchor="end">${fmt(gv)}</text>`;
-  });
-  labels.forEach((lab, i) =>
-    svg += `<text x="${x(i).toFixed(1)}" y="${H - 8}" fill="${C.muted}" font-size="10.5" text-anchor="middle">${lab}</text>`);
-  series.forEach((s) => {
-    const pts = (s.values || []).map((v, i) => v == null ? null : `${x(i).toFixed(1)},${y(v).toFixed(1)}`).filter(Boolean);
-    if (pts.length) svg += `<polyline points="${pts.join(" ")}" fill="none" stroke="${s.color}" stroke-width="2.2"/>`;
-    (s.values || []).forEach((v, i) => {
-      if (v == null) return;
-      svg += `<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="2.8" fill="${s.color}" stroke="${C.panel}" stroke-width="1"><title>${s.name} ${labels[i]}: ${fmt(v)}</title></circle>`;
-      svg += `<text x="${x(i).toFixed(1)}" y="${(y(v) - 7).toFixed(1)}" fill="${C.text}" font-size="9.5" text-anchor="middle">${fmt(v)}</text>`;
-    });
-  });
-  return svg + `</svg>`;
+  return _lines(labels, series, { fmt, raw: true, area: true });
 }
 
 // Peer comparison vs sector median (data injected by the SPA as p._peers).

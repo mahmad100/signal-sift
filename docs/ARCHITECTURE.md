@@ -138,9 +138,10 @@ copy, the app could sit on day-old data indefinitely. Don't reintroduce it. Inst
 
 ## Frontend gotchas (the ones that bite)
 - **Global-scope sharing:** `company.js` and `app.js` are plain `<script>`s sharing the
-  global lexical env. `company.js` declares `esc num fmtPct cls money C SERIES palette
-  buildProfileHTML newsCard kvRows lineChart returnBars targetGauge ratingBar barChart
-  groupedBars multiLine peHistoryChart multiLineRaw peerSection`. `app.js`
+  global lexical env. `company.js` declares `esc num fmtPct cls money C SERIES MARK palette
+  mix barPath barBox _bounds _lines lineLegend buildProfileHTML newsCard kvRows lineChart
+  returnBars targetGauge ratingBar barChart groupedBars multiLine peHistoryChart
+  multiLineRaw peerSection`. `app.js`
   must NOT redeclare any of them (`const` redeclaration across scripts = SyntaxError that
   kills both). `app.js` owns `$ WINDOWS pct fmtAge median State STX WL` + SPA logic.
   `company.js` must not use `app.js`-only names (`pct` etc.) — it self-boots only on `body.pb`.
@@ -163,8 +164,14 @@ copy, the app could sit on day-old data indefinitely. Don't reintroduce it. Inst
   is a per-bar `+/-%` annotation via `barChart`'s `opts.deltas`, not a second y-scale. The
   old `barsWithLine` helper (two hidden scales) is gone — don't bring it back.
 - **SVG marks carry `<title>`** for native hover tooltips (no JS): `barChart`, `groupedBars`,
-  `multiLine`, `multiLineRaw`, `returnBars`. Overlapping line markers get a 1px `C.panel`
-  ring so they stay countable where series cross.
+  the shared line renderer `_lines`, `returnBars`, `ratingBar`. Overlapping line/point
+  markers get a `MARK.ring`-wide `C.panel` ring so they stay countable where series cross.
+- **Shared mark specs live in `MARK`** (`{barMax, barGap, radius, line, dot, ring}`, viewBox
+  units). Bars are drawn with `barPath()` (rounded only at the data end, square at the
+  baseline) and sized with `barBox()` (centred in the slot, capped at `MARK.barMax`, minus
+  the surface gap). All the fundamental line charts route through **`_lines()`**;
+  `multiLine`/`multiLineRaw` are thin wrappers. Marks tagged `class="mk"` brighten on hover
+  (CSS, `hover: hover` only).
 - **yfinance sector label** differs from the GICS label used in the screen — peers match on
   the screen's sector, not `profile.identity.sector`.
 - **The intro splash spans two files.** Its markup + inline IIFE live in `index.html`; its
