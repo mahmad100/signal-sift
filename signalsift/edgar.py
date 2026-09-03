@@ -15,12 +15,28 @@ _INTERESTING = {"10-K", "10-Q", "8-K", "DEF 14A", "SC 13D", "SC 13G", "4"}
 
 
 def _load_map():
+    """ticker -> {cik, title}, or None when the lookup itself failed.
+
+    A filings lookup must never be able to take down a detail page: everything
+    else on it (prices, fundamentals, analysts, news) is independent of EDGAR.
+    The submissions fetch below has always been guarded; this one was not, so a
+    refusal here propagated out of profile() and 500'd the whole endpoint.
+
+    The common cause is a 403: SEC refuses any User-Agent without a contact
+    email on *every* request, so an unset SIGNALSIFT_SEC_UA lands here for every
+    ticker. Returning None (rather than an empty map) lets callers tell "SEC did
+    not answer" apart from "ticker is not on EDGAR", and it is deliberately not
+    cached so filings come back the moment the agent is fixed.
+    """
     cached = cache.get(_MAP_KEY, _MAP_TTL)
     if cached:
         return cached
-    resp = requests.get(_TICKER_MAP_URL, headers=_HEADERS, timeout=20)
-    resp.raise_for_status()
-    raw = resp.json()
+    try:
+        resp = requests.get(_TICKER_MAP_URL, headers=_HEADERS, timeout=20)
+        resp.raise_for_status()
+        raw = resp.json()
+    except (requests.RequestException, ValueError):
+        return None
     # raw is {"0": {"cik_str":320193,"ticker":"AAPL","title":"Apple Inc."}, ...}
     mapping = {}
     for row in raw.values():
@@ -34,6 +50,8 @@ def _load_map():
 
 def cik_for(ticker: str):
     mapping = _load_map()
+    if not mapping:
+        return None
     return mapping.get(ticker.replace(".", "-").upper()) or mapping.get(ticker.upper())
 
 
@@ -44,7 +62,14 @@ def recent_filings(ticker: str, limit: int = 12):
     if cached is not None:
         return cached
 
-    entry = cik_for(ticker)
+    mapping = _load_map()
+    if mapping is None:
+        # SEC did not answer. Not cached, so a fixed user-agent takes effect at once.
+        return {"error": "EDGAR is not answering right now, so filings are unavailable. "
+                         "If this persists, SIGNALSIFT_SEC_UA needs a contact email.",
+                "filings": []}
+
+    entry = mapping.get(ticker.replace(".", "-").upper()) or mapping.get(ticker.upper())
     if not entry:
         result = {"error": "No CIK found for ticker on EDGAR.", "filings": []}
         cache.set(key, result)
