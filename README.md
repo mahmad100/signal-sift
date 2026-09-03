@@ -154,13 +154,15 @@ python run.py
 
 Then open **http://127.0.0.1:5000**.
 
-> **SEC filings need a contact string.** SEC enforces its User-Agent policy: an
-> agent without a real email in it is refused with a 403 on every request. The
-> committed default is deliberately generic (a personal address does not belong in
-> a public repo or in an outbound header), so **filings will not load until you set
-> the env var** — locally with `setx SIGNALSIFT_SEC_UA "Your Name your@email.com"`,
-> and on Vercel with `vercel env add SIGNALSIFT_SEC_UA` followed by a redeploy, since
-> env vars only take effect on a new deployment. Everything else works without it.
+> **SEC identifies API users by User-Agent, and enforces it:** an agent without a
+> real contact email is refused with a 403 on *every* request. The committed default
+> uses a role address on this project's own domain, so filings work out of the box —
+> a personal address belongs neither in a public repo nor in an outbound header.
+> Override it with `SIGNALSIFT_SEC_UA` where you want a more specific contact:
+> `setx SIGNALSIFT_SEC_UA "Your Name your@email.com"` locally, or `vercel env add`
+> plus a redeploy on Vercel, since env vars only take effect on a new deployment.
+> If SEC refuses anyway, filings degrade to an explanatory note and the rest of the
+> page renders normally.
 
 ## Deploy (Vercel)
 

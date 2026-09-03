@@ -149,10 +149,17 @@ copy, the app could sit on day-old data indefinitely. Don't reintroduce it. Inst
   disallow — it is weaker, not stronger.
 - **`SEC_USER_AGENT` must carry a real email.** SEC enforces this: an agent without one
   is refused **403 on every request**, not merely throttled (verified against
-  `sec.gov`). The committed default is generic — a personal address belongs neither in
-  a public repo nor in an outbound header — so **EDGAR filings do not load until
-  `SIGNALSIFT_SEC_UA` is set** in that environment (Vercel needs a redeploy for env
-  vars to take). A 403 on the filings panel and nothing else broken is this, every time.
+  `sec.gov` — a URL in place of an email does not satisfy it either). The committed
+  default is a role address on the project's own domain so filings work unconfigured;
+  a personal address belongs neither in a public repo nor in an outbound header.
+  `SIGNALSIFT_SEC_UA` overrides it (Vercel needs a redeploy for env vars to take).
+- **An EDGAR failure must never fail the page.** `edgar._load_map()` once called
+  `raise_for_status()` unguarded, so a 403 propagated out of `company.profile()` and
+  returned **500 for the whole detail endpoint** — prices, fundamentals and analysts
+  included, none of which need EDGAR. It now returns `None` on failure and is **not
+  cached**, so callers distinguish "SEC did not answer" from "ticker is not on EDGAR"
+  and filings recover as soon as the agent works. The frontend already renders
+  `filings.error`. Keep both fetches in this module guarded.
 - **The disclaimer lives in two places.** `company.js` renders `.disclaimer` on detail
   pages; `index.html` has a `.appfoot` for the dashboard. Keep the wording aligned.
 
