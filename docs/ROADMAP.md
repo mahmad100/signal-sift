@@ -58,6 +58,13 @@ which makes that literal. Two rules follow:
    that would make it a daily habit instead of an occasional visit.
 
 Also queued (cheap, high-value):
+- **An uptime check that exercises a real page, not just `/`.** Two outages now have been
+  invisible from both dashboards: the 2026-08-04 routing break, and a 2026-09-03 change
+  that returned 500 for every detail page while the front page stayed 200 and the build
+  stayed green. A scheduled job asserting `/` → 200, `GET /api/refresh` → 405 (it is
+  POST-only, so a 404 there means requests are not reaching Flask) and
+  `/api/company/<T>` → 200 *with* a non-empty payload would have caught both. Natural
+  home: a second job in the precompute workflow, failing loudly.
 - **"What changed since last visit" digest** — the reason to open it at all on a quiet day.
 - **Custom columns** — let the user pick which windows/metrics show; the column model
   (`tableCols()`) already makes this a data change, not a rewrite.
@@ -88,3 +95,6 @@ future work toward the layers *above* it: saved screens as named stories, the wa
   (e.g. +503%) compresses the rest too much.
 - Is the "why it may be down" thesis carrying its weight, or does it read as filler when the
   heuristics have nothing interesting to say?
+- Should the topbar be sticky? The wordmark now goes home, but it scrolls out of view, so
+  it is only reachable near the top — against the vertical space a sticky header costs on a
+  500-row table.
