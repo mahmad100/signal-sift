@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow, noarchive, nosnippet" />
   <title>Signal Sift</title>
   <script>document.documentElement.dataset.theme = localStorage.getItem("ss-theme") || "midnight";</script>
   <link rel="stylesheet" href="{{ asset('styles.css') }}">
@@ -218,6 +219,16 @@
       <div id="detailBody"><p class="loading">Select a stock…</p></div>
     </section>
   </main>
+
+  <footer class="appfoot">
+    <p class="disclaimer">
+      Signal Sift is a research-idea generator, not investment advice. It points at where to
+      look; the conclusions are yours to draw from the primary sources it links.
+      Data: Yahoo Finance via <code>yfinance</code>, and SEC EDGAR. Index weights are a
+      full-market-cap approximation, not float-adjusted.
+      A learning project, part of <a href="https://ahmadiresearch.com" rel="noopener">Ahmadi Research</a>.
+    </p>
+  </footer>
 
   <!-- Per-column sort/filter popover (Individual stocks + Watchlist) -->
   <div id="colpop" class="colpop hidden" role="dialog" aria-label="Column sort and filter"></div>

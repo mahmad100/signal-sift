@@ -294,6 +294,13 @@ body.pb { background: var(--bg); }
 .sub2 { color: var(--muted); font-size: 12.5px; margin-top: 10px; }
 .disclaimer { color: var(--muted); font-size: 11.5px; margin-top: 24px; text-align: center; }
 
+/* Dashboard footer: the same standing disclaimer the detail pages carry, plus
+   data provenance, so it is visible on the front door and not only after a click. */
+.appfoot { padding: 8px 20px 32px; }
+.appfoot .disclaimer { margin: 0 auto; max-width: 760px; line-height: 1.6; }
+.appfoot .disclaimer a { color: var(--muted); text-decoration: underline; }
+.appfoot .disclaimer code { font-size: 11px; }
+
 @media (max-width: 820px) {
   .tiles { grid-template-columns: repeat(3, 1fr); }
   .grid2 { grid-template-columns: 1fr; }
