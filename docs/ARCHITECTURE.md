@@ -84,8 +84,8 @@ requested universe, so a partial run can't starve a full screen of weights). Bum
 **Client** (`localStorage`): base screen (`ss-base`), per-company profiles (`ss-co-*`),
 watchlist (`ss-watchlist`), basket (`ss-basket`), table sort+filters (`ss-table`), the
 Sectors/Weights window selects (`ss-secover` etc.), theme (`ss-theme`). `APP_SCHEMA`
-(currently `"6"`) purges stale data caches — and the retired `ss-filters` / `ss-wlover`
-keys — on a shape change, keeping `ss-table` + theme.
+(currently `"7"`) purges stale data caches (`ss-base`, `ss-co-*`) — and the retired
+`ss-filters` / `ss-wlover` keys — on a shape change, keeping `ss-table` + theme.
 
 **Deploy-versioned assets:** templates reference JS/CSS via `{{ asset('app.js') }}` →
 `/static/app.js?v=<token>` from `_asset_version()` in `app.py`. Token is
@@ -179,7 +179,7 @@ copy, the app could sit on day-old data indefinitely. Don't reintroduce it. Inst
 No Chrome extension, but two working paths (see HANDOFF.md for the mechanics + gotchas):
 1. **Pure-vm DOM harness** — load `company.js` then `app.js` in a Node `vm` with stubbed
    `document`/`localStorage`/`fetch`/`Option`/`getComputedStyle`, seed `ss-base` (+ `ss-schema`
-   = `"6"`), let `boot()` run, assert on produced HTML. Fast, no browser, no server.
+   = current `APP_SCHEMA`), let `boot()` run, assert on produced HTML. Fast, no browser, no server.
 2. **Real headless Chrome over CDP** — start Flask in serverless mode
    (`VERCEL=1 SIGNALSIFT_DATA_DIR=…`), launch `chrome --headless=new --remote-debugging-port=9222`,
    drive it from Node (`WebSocket` is global): `Page.navigate`, `Runtime.evaluate`,

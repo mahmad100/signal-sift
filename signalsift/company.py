@@ -6,7 +6,7 @@ import config
 from . import analysts, cache, edgar, fundamentals, news, prices
 
 # Bump when the profile payload shape changes (e.g. long windows in returns).
-_SCHEMA = 4
+_SCHEMA = 5
 
 
 def _g(info, *keys):
@@ -169,12 +169,12 @@ def _narrative(p):
     out = []
     r = p["returns"]
     ex = p["excess"]
-    if r.get("12M") is not None and ex.get("12M") is not None:
+    if r.get("1Y") is not None and ex.get("1Y") is not None:
         out.append(
-            f"Shares are {_pct(r['12M'])} over 12 months versus the S&P 500 — "
-            f"{_pct(ex['12M'])} on a relative basis. "
-            + ("Deep relative underperformance." if ex["12M"] < -0.15
-               else "Trailing the index." if ex["12M"] < 0 else "Roughly in line.")
+            f"Shares are {_pct(r['1Y'])} over 12 months versus the S&P 500 — "
+            f"{_pct(ex['1Y'])} on a relative basis. "
+            + ("Deep relative underperformance." if ex["1Y"] < -0.15
+               else "Trailing the index." if ex["1Y"] < 0 else "Roughly in line.")
         )
     tg = p["analysts"].get("targets", {})
     up = tg.get("upside_pct")
