@@ -136,6 +136,26 @@ copy, the app could sit on day-old data indefinitely. Don't reintroduce it. Inst
   6 min, swapping in the data when `generated_at` changes. `/api/screen` advertises
   `live_screen` + `can_trigger_refresh` so the client knows which mode it's in.
 
+## Search visibility + the standing disclaimer
+- **`noindex` is set in two places, on purpose.** `app.py`'s `_noindex` `after_request`
+  stamps `X-Robots-Tag: noindex, nofollow, noarchive, nosnippet` on every response —
+  every route on this deployment goes through the Flask function, so that one hook
+  covers pages, API responses and static assets. Both templates also carry a `noindex`
+  meta for anything reading markup rather than headers.
+- **`/robots.txt` allows crawling deliberately.** A `Disallow: /` would stop crawlers
+  fetching the pages, so they would never see the `noindex`, and a blocked URL can
+  still be listed from inbound links alone. Archivers are refused by name instead:
+  they honour `Disallow` and ignore `noindex`. Don't "tighten" this to a blanket
+  disallow — it is weaker, not stronger.
+- **`SEC_USER_AGENT` must carry a real email.** SEC enforces this: an agent without one
+  is refused **403 on every request**, not merely throttled (verified against
+  `sec.gov`). The committed default is generic — a personal address belongs neither in
+  a public repo nor in an outbound header — so **EDGAR filings do not load until
+  `SIGNALSIFT_SEC_UA` is set** in that environment (Vercel needs a redeploy for env
+  vars to take). A 403 on the filings panel and nothing else broken is this, every time.
+- **The disclaimer lives in two places.** `company.js` renders `.disclaimer` on detail
+  pages; `index.html` has a `.appfoot` for the dashboard. Keep the wording aligned.
+
 ## Frontend gotchas (the ones that bite)
 - **Global-scope sharing:** `company.js` and `app.js` are plain `<script>`s sharing the
   global lexical env. `company.js` declares `esc num fmtPct cls money C SERIES MARK palette
@@ -153,6 +173,12 @@ copy, the app could sit on day-old data indefinitely. Don't reintroduce it. Inst
 - **`judge(row,w)` is tri-state** (`true`/`false`/`null`) but trivial now —
   `v == null ? null : v > GROWTH_LINE`, `GROWTH_LINE = 0.05`, used only by the Sectors tab.
   The old per-window benchmark line (`lineFor` / `isSpyLine` / `ceilNum`) is gone.
+- **The wordmark is a link home.** `.brand` is an `<a href="#/stocks">`, and `app.js`
+  also binds a click handler on it: the href alone is a no-op when the hash is already
+  `#/stocks`, which is the common case, and the handler also scrolls back to the top.
+  It bails out on modified clicks (ctrl/cmd/shift/alt, non-left) so open-in-new-tab
+  still works. Note the topbar is **not** sticky, so the logo is only reachable near
+  the top of the page.
 - **Load order:** `company.js` before `app.js` in both HTML files.
 - **Charts are theme-aware:** `palette()` reads CSS vars into `C` at render time; a theme
   switch re-renders so SVG colors follow. **Multi-series** charts (Margins, Revenue+YoY,
