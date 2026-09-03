@@ -9,6 +9,36 @@ The thesis: a large-cap that goes sideways while the index runs is a *signal*.
 Sometimes it's a value trap; sometimes it's a coiled spring the market hasn't
 re-rated yet. Signal Sift finds them and points you at the primary sources.
 
+## Why this exists
+
+Signal Sift is the tooling side of [Ahmadi Research](https://ahmadiresearch.com). The written
+work there — decks on private credit, sovereign risk, the AI trade — kept needing the same
+thing before it could start: trailing returns for a few hundred names, lined up against the
+index, with the ones whose price and story had drifted apart pulled out. This is that chore
+turned into an app.
+
+It's a **learning project** and it stays one. Nothing is gated, nothing is for sale, there
+are no accounts. The repo is public so the method is inspectable — the same reason the
+spreadsheets behind the papers are. Building it end to end was the point: a real data
+pipeline, a cache that behaves like a small database, a serverless deploy that can't afford
+a 25-second cold start, a scheduled job that keeps the data fresh, and every chart drawn by
+hand in SVG so I had to decide what a chart should actually say.
+[docs/ROADMAP.md](docs/ROADMAP.md) has the longer version of what I was trying to learn.
+
+### It's vibe coded
+
+This app was **vibe coded** — built conversationally with an AI coding agent rather than
+typed line by line. The product decisions, the design calls, and the "that chart is
+misleading, redo it" are mine, and I ran and read what came back. But I'm not going to claim
+authorship of every function in here, and the code shouldn't be read as a portfolio piece of
+hand-written craft.
+
+That's the same split as the [Approach page](https://ahmadiresearch.com/approach.html): AI
+drafts, I underwrite. The honest difference is one of scope. In a paper, every number is
+traced to a primary source before it ships. Here the claim is narrower — **I verified the
+app's behaviour, not every line of its source.** Which is exactly why the caveats at the
+bottom matter, and why this is a tool for finding the question, not the answer.
+
 > **Working on this project?** See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the
 > code is organized and [docs/ROADMAP.md](docs/ROADMAP.md) for direction. Setup and how to
 > run/test/deploy are below.
@@ -231,5 +261,12 @@ Signal Sift/
 
 ## Caveats
 
-- yfinance scrapes Yahoo; occasional gaps/rate-limits are normal — hit Refresh.
-- Not investment advice. This is a research-idea generator, not a signal to trade.
+- **yfinance scrapes Yahoo.** Occasional gaps and rate-limits are normal — hit Refresh. It's
+  fine for a personal research tool; it would not hold up under anything with real users
+  depending on it. That would need licensed market data.
+- **Index weights are approximate** — full market cap, not float-adjusted, so dual-class
+  names are off. Good enough to reason with, not good enough to quote.
+- **Vibe coded** — see [above](#its-vibe-coded). I verified the app's behaviour, not every
+  line of its source.
+- **Nothing here is investment advice.** It's a research-idea generator, not a signal to
+  trade — a way to find the question, not the answer.
