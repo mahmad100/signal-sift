@@ -36,6 +36,17 @@ def _inject_asset_helper():
     return {"asset": lambda name: f"/static/{name}?v={_asset_version()}"}
 
 
+@app.after_request
+def _revalidate_html(resp):
+    """HTML shells must always be revalidated so a fresh deploy's ?v= asset token
+    reaches the browser on a plain reload. Without this the browser can serve a
+    cached page that still points at the previous deploy's app.js/company.js — the
+    versioned static files themselves stay long-cached and immutable."""
+    if resp.mimetype == "text/html":
+        resp.headers["Cache-Control"] = "no-cache"
+    return resp
+
+
 @app.route("/")
 def index():
     # index.html opens with the intro splash overlay (plays on every load), then
