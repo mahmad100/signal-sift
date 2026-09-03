@@ -1048,6 +1048,16 @@ async function boot() {
     renderStocks();
   }
 
+  // The wordmark is home: back to Individual stocks (and to the top of it).
+  // The href alone would be a no-op when we're already on #/stocks, hence the handler.
+  const brand = document.querySelector(".brand");
+  if (brand) brand.addEventListener("click", (e) => {
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;  // let
+    e.preventDefault();                                        // modified clicks open a tab
+    switchTab("stocks");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  });
+
   // Column sort/filter popover: dismiss on outside-click, Esc, scroll, resize.
   document.addEventListener("mousedown", (e) => {
     if ($("colpop").classList.contains("hidden")) return;
