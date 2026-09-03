@@ -63,4 +63,6 @@ watchlist, "what changed since last visit", and letting the chart *say something
 - Precompute freshness cadence — is twice-daily enough, or add more Action runs?
 - When to introduce accounts/auth (needed for cross-device watchlists, alerts, billing)?
 - Which licensed data provider when moving past yfinance?
-- Split the 11-bar detail return chart into short/long groups?
+- The 11-bar detail return chart is now chronological + zero-anchored + extremes-labelled
+  (2026-09-03); a short/long split or capped scale is still open if a huge outlier window
+  (e.g. +503%) compresses the rest too much.

@@ -46,19 +46,21 @@ re-rated yet. Signal Sift finds them and points you at the primary sources.
   EDGAR** filings (10-K, 10-Q, 8-K, proxies, insider Form 4s), **analyst** price
   targets, consensus rating, and upside-to-target.
 - **Pitchbook profile** — click any stock for a full visual detail view:
-  - A **5-year** price-vs-SPY trend chart, trailing returns across all eleven
-    windows (**1D → 5Y**), and relative performance.
-  - **Fundamentals, charted**: revenue with a **YoY-growth overlay line**,
-    margins (gross/operating/net lines), net income, free cash flow, diluted
-    EPS, a **year-end P/E valuation-history** line, quarterly revenue & income,
-    and a full statement-detail table.
-  - **Peer comparison** — this stock's 1M/3M/6M/12M returns vs. its **sector
+  - A **5-year** price-vs-SPY trend chart, and trailing returns across all
+    eleven windows (**1D → 5Y**, in order) vs. the index.
+  - **Fundamentals, charted**: revenue with **year-over-year growth marked on
+    each bar**, margins (gross/operating/net lines), net income, free cash flow,
+    diluted EPS, a **year-end P/E valuation-history** line, quarterly revenue &
+    income, and a full statement-detail table.
+  - **Peer comparison** — this stock's 1M/3M/6M/1Y returns vs. its **sector
     median** and SPY, plus its rank within the sector (e.g. "#4 of 74").
   - Valuation & profitability metrics, an analyst price-target gauge +
-    **number of analysts following**, and rating distribution.
+    **number of analysts following**, and a buy → sell rating distribution.
   - Business description, **recent news headlines with a bull/bear sentiment
     tag**, SEC filings, and an auto-written "why it may be down" thesis.
-  - All charts are inline SVG (no external libraries) and recolor with the theme.
+  - All charts are inline SVG (no libraries). Chrome (axes, gridlines, labels)
+    follows the theme; data series use one fixed, colourblind-checked palette so
+    a chart reads the same on every theme. Hover any bar or point for its value.
 
 ## Feels like an app
 
