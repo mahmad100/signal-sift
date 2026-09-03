@@ -208,6 +208,20 @@ Without the token nothing breaks — Refresh still serves the latest published
 screen and says so; it just can't pull off-schedule. You can always run one by
 hand: **Actions tab → Precompute screen → Run workflow**.
 
+## Search visibility
+
+The app is deliberately kept out of search results: an `X-Robots-Tag: noindex,
+nofollow, noarchive, nosnippet` header on **every** response (set in one
+`after_request`, so it covers pages, the JSON API and static assets alike), plus a
+matching `noindex` meta tag on both templates for anything that reads markup instead
+of headers.
+
+`robots.txt` **allows** general crawling on purpose. Disallowing it would stop
+crawlers fetching the pages at all, so they would never read the `noindex` — and a
+blocked URL can still be listed from inbound links alone. Letting them fetch and then
+telling them not to index is what actually keeps it out. Archivers are the one
+exception and are refused by name, since they honour `Disallow` and ignore `noindex`.
+
 ## Using the dashboard
 
 Every column of the *Individual stocks* and *Watchlist* tables is a button. Click a
