@@ -35,16 +35,17 @@ GH_TOKEN = os.environ.get("SIGNALSIFT_GH_TOKEN", "")
 GH_WORKFLOW = "precompute.yml"
 GH_REF = "main"
 
-# SEC requires a User-Agent carrying real contact info, and it enforces this:
-# an agent without an email in it gets 403 on every request, not just heavy ones.
-# The committed fallback is deliberately generic because this value both travels
-# to sec.gov in a request header and lives in a public repo, so a personal
-# address does not belong in it -- which means EDGAR filings do not load until
-# SIGNALSIFT_SEC_UA is set to a real "Name email" string. Set it in every
-# environment that needs filings, including local dev. See README.md.
+# SEC identifies API users by User-Agent and enforces it: an agent with no real
+# contact email is refused 403 on *every* request, not merely throttled under
+# load. So the committed default carries a role address on this project's own
+# domain -- never a personal one, since this value both travels to sec.gov in a
+# request header and lives in a public repo. Override with SIGNALSIFT_SEC_UA
+# where a more specific contact is wanted. A refusal here is non-fatal by
+# design: see edgar._load_map, which degrades to an explanatory filings panel
+# rather than failing the detail page.
 SEC_USER_AGENT = os.environ.get(
     "SIGNALSIFT_SEC_UA",
-    "Signal Sift research tool (contact via repository)",
+    "Signal Sift research tool contact@ahmadiresearch.com",
 )
 
 # Trailing windows to evaluate, in calendar days. Order = display order.
