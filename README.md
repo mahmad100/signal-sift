@@ -23,7 +23,6 @@ spreadsheets behind the papers are. Building it end to end was the point: a real
 pipeline, a cache that behaves like a small database, a serverless deploy that can't afford
 a 25-second cold start, a scheduled job that keeps the data fresh, and every chart drawn by
 hand in SVG so I had to decide what a chart should actually say.
-[docs/ROADMAP.md](docs/ROADMAP.md) has the longer version of what I was trying to learn.
 
 ### It's vibe coded
 
@@ -40,8 +39,7 @@ app's behaviour, not every line of its source.** Which is exactly why the caveat
 bottom matter, and why this is a tool for finding the question, not the answer.
 
 > **Working on this project?** See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the
-> code is organized and [docs/ROADMAP.md](docs/ROADMAP.md) for direction. Setup and how to
-> run/test/deploy are below.
+> code is organized. Setup and how to run/test/deploy are below.
 
 ## What it does
 

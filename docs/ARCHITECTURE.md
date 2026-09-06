@@ -1,7 +1,6 @@
 # Signal Sift — Architecture
 
-How the code is organized, how data flows, and the non-obvious decisions. See
-[ROADMAP.md](ROADMAP.md) for direction.
+How the code is organized, how data flows, and the non-obvious decisions.
 
 ## Layout
 ```

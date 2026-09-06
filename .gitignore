@@ -12,3 +12,4 @@ data/*.log
 .claude/
 CLAUDE.md
 docs/HANDOFF.md
+docs/ROADMAP.md
