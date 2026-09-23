@@ -91,7 +91,10 @@ Signal Sift/
   which sums exactly to the index return, so "what you took out" splits the gain with no
   residual. The history keeps every week's and month's last close before the daily window
   so calendar ranges start on the right day. The "AI trade" preset is a hand-picked list
-  (labelled "our pick" in its tooltip).
+  (labelled "our pick" in its tooltip). A first visit defaults `spyOut` to the Magnificent 7
+  (only when `ss-spyout` is absent). Date boxes: act only on dates within min/max, never
+  rewrite a box being edited (`SPY_EDITING`, via focus/blur), and only assign `min`/`max`
+  when they change, since re-assigning resets a focused date box in Chrome.
   `basketPath(over, scheme, tickers, frame)` takes any ticker Set, which is what the **Compare
   baskets** card runs on: your basket (colour slot 0) plus up to three `WT_BASKETS`
   presets in `State.wtCompare` (a fixed 3-slot array persisted as `ss-wtcompare`, so a
