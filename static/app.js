@@ -1108,6 +1108,10 @@ function renderWtCompare(over, scheme) {
 // A name's contribution = its weight at the start × its return; they sum to
 // the index return, so "what you took out" splits the gain exactly.
 const SPY_RANGES = ["1M", "3M", "6M", "YTD", "1Y", "2Y", "3Y", "5Y"];
+// Date boxes being edited. Tracked with focus/blur on the box itself, because
+// Chrome fires `change` while it moves between the month/day/year fields, when
+// document.activeElement briefly isn't the box.
+const SPY_EDITING = new Set();
 const spyIso = (ms) => new Date(ms).toISOString().slice(0, 10);
 
 function spyIdxRange() {
@@ -1178,8 +1182,16 @@ function renderSpyWhatIf() {
   wtSegs("spyRangeChips", cur, SPY_RANGES.map((k) => [k, k]));
   const { s, e } = spyIdxRange();
   const fromEl = $("spyFrom"), toEl = $("spyTo");
-  fromEl.min = toEl.min = spyIso(H.t[0]); fromEl.max = toEl.max = spyIso(H.t[H.t.length - 1]);
-  fromEl.value = spyIso(H.t[s]); toEl.value = spyIso(H.t[e]);
+  // Only touch min/max when they change: rewriting them resets a date box
+  // mid-typing in Chrome (it drops focus).
+  const lo = spyIso(H.t[0]), hi = spyIso(H.t[H.t.length - 1]);
+  [fromEl, toEl].forEach((el) => {
+    if (el.min !== lo) el.min = lo;
+    if (el.max !== hi) el.max = hi;
+  });
+  // Never rewrite a date box the visitor is typing in.
+  if (!SPY_EDITING.has("spyFrom")) fromEl.value = spyIso(H.t[s]);
+  if (!SPY_EDITING.has("spyTo")) toEl.value = spyIso(H.t[e]);
 
   // Take-out controls: themes, sectors, and what's out now.
   const chipState = (tk) => {
@@ -1241,6 +1253,8 @@ function renderSpyWhatIf() {
   if (has) series.push({ name: "Without your picks", values: M.kept, color: WT_SERIES[1] });
   if (has && State.spyAlone && M.out) series.push({ name: "Your picks alone", values: M.out, color: WT_SERIES[2] });
   if (M.spy) series.push({ name: "SPY (the fund)", values: M.spy, color: C.muted, muted: true });
+  if (M.t.length < 4)
+    $("spyStats").insertAdjacentHTML("beforeend", `<p class="spyverdict spywarn">This range only has ${M.t.length} closing prices (${d0} to ${d1}), so each line is just a straight join between them. Pick a week or more to see a trend.</p>`);
   $("spyNote").innerHTML = `${d0} to ${d1}${M.weekly ? " · weekly closes before the last ~3 months" : ""}. ` +
     `The S&amp;P 500 line is rebuilt from today's members at full market cap, so it runs close to, not exactly on, the SPY fund.`;
   $("spyAloneWrap").classList.toggle("hidden", !has);
@@ -1730,12 +1744,20 @@ async function boot() {
     if (!b) return;
     State.spyRange = { k: b.dataset.v }; saveFilters(); renderSpyWhatIf();
   });
-  ["spyFrom", "spyTo"].forEach((id) => $(id).addEventListener("change", () => {
-    if (!$("spyFrom").value || !$("spyTo").value) return;
-    let [a, b] = [$("spyFrom").value, $("spyTo").value];
-    if (a > b) [a, b] = [b, a];
-    State.spyRange = { from: a, to: b }; saveFilters(); renderSpyWhatIf();
-  }));
+  // Typing a date fires `change` on every segment, so half-typed years like
+  // 0002 or 0202 arrive as valid dates. Only act on a date inside the history;
+  // anything else waits, and leaving the box snaps it back to the current range.
+  const spyDateOk = (el) => el.value && el.value >= el.min && el.value <= el.max;
+  ["spyFrom", "spyTo"].forEach((id) => {
+    $(id).addEventListener("change", () => {
+      if (!spyDateOk($("spyFrom")) || !spyDateOk($("spyTo"))) return;
+      let [a, b] = [$("spyFrom").value, $("spyTo").value];
+      if (a > b) [a, b] = [b, a];
+      State.spyRange = { from: a, to: b }; saveFilters(); renderSpyWhatIf();
+    });
+    $(id).addEventListener("focus", () => SPY_EDITING.add(id));
+    $(id).addEventListener("blur", () => { SPY_EDITING.delete(id); setTimeout(renderSpyWhatIf, 0); });
+  });
   $("spyAlone").addEventListener("change", () => {
     State.spyAlone = $("spyAlone").checked; saveFilters(); renderSpyWhatIf();
   });
