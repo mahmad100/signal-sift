@@ -39,6 +39,9 @@ const State = {
   secOver: "1Y",
   wtOver: "1Y",               // Weights view: return window for basket-vs-SPY
   wtScheme: "cap",            // Weights view: 'cap' | 'equal'
+  wtSecView: "bars",          // Weights view: sector card 'bars' | 'lines'
+  wtCmpView: "chart",         // Weights view: basket card 'chart' | 'table'
+  wtCompare: [null, null, null], // Weights view: ready-made baskets overlaid, by colour slot
   active: "stocks",
   cursor: -1,                 // keyboard row cursor in stocks/watchlist tables
   detailTicker: null,
@@ -74,11 +77,20 @@ function saveFilters() {
   localStorage.setItem("ss-secover", State.secOver);
   localStorage.setItem("ss-wtover", State.wtOver);
   localStorage.setItem("ss-wtscheme", State.wtScheme);
+  localStorage.setItem("ss-wtsecview", State.wtSecView);
+  localStorage.setItem("ss-wtcmpview", State.wtCmpView);
+  localStorage.setItem("ss-wtcompare", JSON.stringify(State.wtCompare));
 }
 function loadFilters() {
   State.secOver = localStorage.getItem("ss-secover") || "1Y";
   State.wtOver = localStorage.getItem("ss-wtover") || "1Y";
   State.wtScheme = localStorage.getItem("ss-wtscheme") || "cap";
+  State.wtSecView = localStorage.getItem("ss-wtsecview") === "lines" ? "lines" : "bars";
+  State.wtCmpView = localStorage.getItem("ss-wtcmpview") === "table" ? "table" : "chart";
+  try {
+    const c = JSON.parse(localStorage.getItem("ss-wtcompare"));
+    State.wtCompare = [0, 1, 2].map((i) => (Array.isArray(c) && wtBasketById(c[i]) ? c[i] : null));
+  } catch (e) { State.wtCompare = [null, null, null]; }
 }
 
 // Per-column sort + filter for the two spreadsheet-style tables. This is the
@@ -542,7 +554,20 @@ function renderSectors() {
 // Approximate SPY weights from each name's market_cap (implied shares × price,
 // supplied by the backend). All `wt*`/`basket*` names to avoid the company.js
 // shared-scope collision.
+//
+// Weights *over time* are rebuilt from the trailing returns already in the
+// screen: a name's value at the start of window w is market_cap / (1 + r_w).
+// That holds share counts constant (buybacks / issuance ignored), uses today's
+// constituents (no index changes), and the prices are dividend-adjusted — an
+// approximation, but one that needs no extra data. A name with no lookback price
+// for w (a recent listing) simply isn't in the index at that point.
 function wpct(frac, d = 2) { return frac == null ? "—" : (frac * 100).toFixed(d) + "%"; }
+function wpts(diff) {
+  if (diff == null) return '<span class="na">—</span>';
+  const v = diff * 100, c = Math.abs(v) < 0.005 ? "ret-flat" : v > 0 ? "ret-up" : "ret-down";
+  return `<span class="${c}">${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v).toFixed(2)} pts</span>`;
+}
+const wtAgo = (w) => (w === "now" ? "Now" : `${w} ago`);
 
 function weightUniverse() {
   const rows = (State.base && State.base.rows) || [];
@@ -551,17 +576,137 @@ function weightUniverse() {
   return { rows, capped, total };
 }
 
-// Weighted trailing return of the current basket over one window (or null).
-// Cap-weighted normalizes market caps within the basket; equal weights 1/N.
-function basketReturn(over, scheme) {
-  const rows = State.base.rows.filter((r) => State.basket.has(r.ticker) && r.returns[over] != null);
-  if (!rows.length) return null;
-  const capd = rows.filter((r) => r.market_cap != null && r.market_cap > 0);
-  if (scheme === "cap" && capd.length) {
-    const tot = capd.reduce((a, r) => a + r.market_cap, 0);
-    return capd.reduce((a, r) => a + (r.market_cap / tot) * r.returns[over], 0);
+// A name's price relative to today at point w ("now" = 1), or null.
+function wtRel(r, w) {
+  if (w === "now") return 1;
+  const x = r.returns[w];
+  return x == null ? null : 1 / (1 + x);
+}
+function capAt(r, w) {
+  const rel = wtRel(r, w);
+  return rel == null || !(r.market_cap > 0) ? null : r.market_cap * rel;
+}
+
+// Points on the time axis for a window: every lookback at or inside it, oldest
+// first, then "now".
+function wtTimeline(over) {
+  const d = winDays(over);
+  return WINDOWS.filter((w) => winDays(w) <= d)
+    .sort((a, b) => winDays(b) - winDays(a)).concat("now");
+}
+
+// Index total and per-sector share at point w, over names with a value then.
+function wtIndexAt(w) {
+  const { capped } = weightUniverse();
+  const sec = {}, vals = [];
+  let total = 0;
+  capped.forEach((r) => {
+    const v = capAt(r, w);
+    if (v == null) return;
+    const s = r.sector || "Unknown";
+    sec[s] = (sec[s] || 0) + v;
+    total += v;
+    vals.push(v);
+  });
+  Object.keys(sec).forEach((s) => (sec[s] = total ? sec[s] / total : 0));
+  vals.sort((a, b) => b - a);
+  const top = (n) => (total ? vals.slice(0, n).reduce((a, v) => a + v, 0) / total : null);
+  return { total, sec, top };
+}
+
+// Buy-and-hold basket bought at the start of `over`: level at each timeline
+// point, indexed to 100 at the start. Cap-weighted holds each name in
+// proportion to its market value then (what SPY does); equal-weighted puts the
+// same dollars in each name. Names without a lookback price for `over` are left
+// out. `tickers` is any Set (default: your basket). Returns
+// { members, points, levels } or null when nothing qualifies.
+function basketPath(over, scheme, tickers = State.basket) {
+  const points = wtTimeline(over);
+  const members = State.base.rows.filter((r) =>
+    tickers.has(r.ticker) && points.every((p) => wtRel(r, p) != null) &&
+    (scheme !== "cap" || r.market_cap > 0));
+  if (!members.length) return null;
+  const units = members.map((r) => (scheme === "cap" ? r.market_cap : 1 / wtRel(r, over)));
+  const valueAt = (p) => members.reduce((a, r, i) => a + units[i] * wtRel(r, p), 0);
+  const start = valueAt(over);
+  return { members, points, levels: points.map((p) => (100 * valueAt(p)) / start) };
+}
+function basketReturn(over, scheme, tickers = State.basket) {
+  const b = basketPath(over, scheme, tickers);
+  return b ? b.levels[b.levels.length - 1] / 100 - 1 : null;
+}
+function spyPath(over) {
+  const bench = State.base.meta.benchmark_returns || {};
+  if (bench[over] == null) return null;
+  return wtTimeline(over).map((p) =>
+    p === "now" ? 100 * (1 + bench[over])
+      : bench[p] == null ? null : (100 * (1 + bench[over])) / (1 + bench[p]));
+}
+
+// Time-scaled line chart (x = days before today), for the weights-over-time and
+// basket-vs-SPY views. `muted` series draw thin and grey behind the coloured
+// ones; with `endLabels` every line is named at its right end (nudged apart).
+function wtLineChart(points, series, { fmt, endLabels = false, lo: lo0, hi: hi0, width = 900 } = {}) {
+  const all = series.flatMap((s) => s.values).filter((v) => v != null);
+  if (!all.length) return `<div class="na">No data for this window.</div>`;
+  let lo = Math.min(...all), hi = Math.max(...all);
+  const pad = (hi - lo) * 0.08 || Math.abs(hi) * 0.05 || 1;
+  lo = lo0 != null ? lo0 : lo - pad;
+  hi = hi0 != null ? hi0 : hi + pad;
+  // Snap the scale to round ticks (1 / 2 / 2.5 / 5 × 10^k).
+  const raw = (hi - lo) / 4, mag = 10 ** Math.floor(Math.log10(raw));
+  const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((v) => v >= raw * 0.999);
+  lo = Math.floor(lo / step + 1e-9) * step;
+  hi = Math.ceil(hi / step - 1e-9) * step;
+  const ticks = [];
+  for (let v = lo; v <= hi + step / 2; v += step) ticks.push(v);
+  const W = width, H = endLabels ? 340 : 280, padT = 14, padB = 30, padL = 52;
+  const padR = endLabels ? 190 : 20;
+  const days = points.map((p) => (p === "now" ? 0 : winDays(p)));
+  const span = Math.max(1, days[0]);
+  const x = (i) => padL + (1 - days[i] / span) * (W - padL - padR);
+  const y = (v) => padT + (1 - (v - lo) / (hi - lo)) * (H - padT - padB);
+  let svg = `<svg viewBox="0 0 ${W} ${H}" class="chart wtchart" role="img">`;
+  for (const gv of ticks) {
+    const gy = y(gv).toFixed(1);
+    svg += `<line x1="${padL}" y1="${gy}" x2="${W - padR}" y2="${gy}" stroke="${C.line}"/>` +
+      `<text x="${padL - 8}" y="${(+gy + 3.5).toFixed(1)}" fill="${C.muted}" font-size="11" text-anchor="end">${fmt(gv)}</text>`;
   }
-  return rows.reduce((a, r) => a + r.returns[over], 0) / rows.length;   // equal (or cap fallback)
+  // Label the time axis right-to-left, skipping points that would collide.
+  let lastX = Infinity;
+  for (let i = points.length - 1; i >= 0; i--) {
+    const px = x(i);
+    if (lastX - px < 44) continue;
+    svg += `<text x="${px.toFixed(1)}" y="${H - 9}" fill="${C.muted}" font-size="11" text-anchor="middle">${points[i] === "now" ? "Now" : points[i] + " ago"}</text>`;
+    lastX = px;
+  }
+  const ordered = [...series.filter((s) => s.muted), ...series.filter((s) => !s.muted)];
+  ordered.forEach((s) => {
+    const pts = s.values.map((v, i) => (v == null ? null : `${x(i).toFixed(1)},${y(v).toFixed(1)}`)).filter(Boolean);
+    const col = s.muted ? C.muted : s.color;
+    svg += `<g class="wtline${s.muted ? " muted" : ""}"><title>${esc(s.name)}</title>`;
+    if (pts.length > 1) svg += `<polyline points="${pts.join(" ")}" fill="none" stroke="${col}" stroke-width="${s.muted ? 1.5 : MARK.line}" stroke-linejoin="round" stroke-linecap="round"/>`;
+    s.values.forEach((v, i) => {
+      if (v == null) return;
+      svg += `<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="${s.muted ? 2.6 : MARK.dot}" fill="${col}" stroke="${C.panel}" stroke-width="${MARK.ring}" class="mk"><title>${esc(s.name)} · ${wtAgo(points[i])}: ${fmt(v)}</title></circle>`;
+    });
+    svg += `</g>`;
+  });
+  if (endLabels) {
+    const n = points.length - 1, minGap = 14;
+    const labs = series.filter((s) => s.values[n] != null)
+      .map((s) => ({ s, y: y(s.values[n]) })).sort((a, b) => a.y - b.y);
+    for (let i = 1; i < labs.length; i++) labs[i].y = Math.max(labs[i].y, labs[i - 1].y + minGap);
+    const over = labs.length ? labs[labs.length - 1].y - (H - padB) : 0;
+    if (over > 0) labs.forEach((l) => (l.y -= over));
+    for (let i = labs.length - 2; i >= 0; i--) labs[i].y = Math.min(labs[i].y, labs[i + 1].y - minGap);
+    labs.forEach(({ s, y: ly }) => {
+      const lx = x(n) + 10;
+      svg += `<circle cx="${lx + 3}" cy="${(ly - 0.5).toFixed(1)}" r="3.5" fill="${s.muted ? C.muted : s.color}"/>` +
+        `<text x="${lx + 11}" y="${(ly + 3.5).toFixed(1)}" fill="${s.muted ? C.muted : C.text}" font-size="11.5">${esc(s.name)} ${fmt(s.values[n])}</text>`;
+    });
+  }
+  return svg + `</svg>`;
 }
 
 function updateBasketCount() { $("wtCount").textContent = State.basket.size; }
@@ -581,61 +726,249 @@ function toggleSectorBasket(sector) {
   names.forEach((t) => (allIn ? State.basket.delete(t) : State.basket.add(t)));
   saveBasket(); updateBasketCount(); renderWeights();
 }
-
-function coverageVerdict(n, tot, diff, over) {
-  if (diff == null) return "";
-  const word = Math.abs(diff) < 0.01 ? "tracked SPY almost exactly"
-             : diff > 0 ? "beat SPY" : "trailed SPY";
-  return `These ${n} names (${wpct(n / tot, 0)} of the index by count) ${word} over ${over}.`;
+function wtByWeight() {
+  return [...weightUniverse().capped].sort((a, b) => b.market_cap - a.market_cap);
 }
 
-function renderWtSectors(over) {
-  const { rows, capped, total } = weightUniverse();
-  const mc = {}, cnt = {}, inb = {};
-  capped.forEach((r) => { const s = r.sector || "Unknown"; mc[s] = (mc[s] || 0) + r.market_cap; });
+// Ready-made baskets: load one as your basket, or overlay it on the compare
+// chart. Hand-picked lists are filtered to names in today's screen, so a
+// delisting just shrinks the basket. `scheme` pins the weighting (the
+// equal-weight index is the point of that basket); otherwise it follows yours.
+const WT_BASKETS = [
+  { id: "top10", label: "Top 10", note: "The 10 biggest names by index weight", top: 10 },
+  { id: "top25", label: "Top 25", note: "The 25 biggest names by index weight", top: 25 },
+  { id: "top50", label: "Top 50", note: "The 50 biggest names by index weight", top: 50 },
+  { id: "top100", label: "Top 100", note: "The 100 biggest names by index weight", top: 100 },
+  { id: "mag7", label: "Magnificent 7", list: "AAPL MSFT GOOGL AMZN NVDA META TSLA" },
+  { id: "chips", label: "Chipmakers", list: "NVDA AVGO AMD MU INTC QCOM TXN AMAT LRCX KLAC ADI MRVL MCHP NXPI ON MPWR" },
+  { id: "memory", label: "Memory & storage", list: "MU WDC STX SNDK" },
+  { id: "banks", label: "Big banks", list: "JPM BAC WFC C GS MS" },
+  { id: "pharma", label: "Big pharma", list: "LLY JNJ ABBV MRK PFE BMY AMGN" },
+  { id: "staples", label: "Household staples", list: "WMT COST PG KO PEP PM" },
+  { id: "oil", label: "Oil majors", list: "XOM CVX COP EOG" },
+  { id: "ew", label: "Equal-weight S&P 500", note: "Every name, same dollars in each (like RSP)", all: true, scheme: "equal" },
+];
+const WT_SERIES = [...SERIES, "#c98500"];   // + a 4th hue; validated with SERIES as lines
+const WT_MAX_COMPARE = WT_SERIES.length - 1;  // slot 0 is always your basket
+
+function wtBasketTickers(b) {
+  const inScreen = new Set(State.base.rows.map((r) => r.ticker));
+  if (b.top) return wtByWeight().slice(0, b.top).map((r) => r.ticker);
+  if (b.all) return State.base.rows.map((r) => r.ticker);
+  return b.list.split(" ").filter((t) => inScreen.has(t));
+}
+const wtBasketById = (id) => WT_BASKETS.find((b) => b.id === id);
+function wtSameAsBasket(tickers) {
+  return tickers.length === State.basket.size && tickers.every((t) => State.basket.has(t));
+}
+
+// Compare slots keep their colour when a neighbour is removed (colour follows
+// the basket, not its position in the list).
+function toggleCompare(id) {
+  const i = State.wtCompare.indexOf(id);
+  if (i >= 0) State.wtCompare[i] = null;
+  else {
+    const free = State.wtCompare.indexOf(null);
+    if (free < 0) return;
+    State.wtCompare[free] = id;
+  }
+  saveFilters(); renderWeights();
+}
+
+// The basket picker: ready-made baskets, sector chips, add-by-search, and the
+// current basket as removable chips. Every control here is one click.
+function renderWtPicker() {
+  const byW = wtByWeight(), { rows, total } = weightUniverse();
+  const cur = State.basket;
+  $("wtPresets").innerHTML = WT_BASKETS.map((b) => {
+    const t = wtBasketTickers(b);
+    return `<button class="wtchip${wtSameAsBasket(t) ? " on" : ""}" data-load="${b.id}" title="${esc(b.note || t.join(", "))}">${esc(b.label)}</button>`;
+  }).join("") + `<button class="wtchip clear" data-load="clear"${cur.size ? "" : " disabled"}>Clear</button>`;
+  $("wtPresets").querySelectorAll("[data-load]").forEach((btn) => (btn.onclick = () => {
+    const k = btn.dataset.load;
+    setBasket(k === "clear" ? [] : wtBasketTickers(wtBasketById(k)));
+  }));
+
+  const cnt = {}, inb = {}, mc = {};
   rows.forEach((r) => {
     const s = r.sector || "Unknown";
     cnt[s] = (cnt[s] || 0) + 1;
-    if (State.basket.has(r.ticker)) inb[s] = (inb[s] || 0) + 1;
+    mc[s] = (mc[s] || 0) + (r.market_cap > 0 ? r.market_cap : 0);
+    if (cur.has(r.ticker)) inb[s] = (inb[s] || 0) + 1;
   });
-  const secs = Object.entries(mc).map(([s, v]) => ({ sector: s, w: total ? v / total : 0 }))
-    .sort((a, b) => b.w - a.w);
-  const maxW = Math.max(0.01, ...secs.map((s) => s.w));
-  $("wtSectors").innerHTML = secs.map((s) => {
-    const inCount = inb[s.sector] || 0, tot = cnt[s.sector] || 0;
-    const full = inCount > 0 && inCount === tot, some = inCount > 0 && !full;
-    return `<div class="wtsec ${full ? "full" : some ? "some" : ""}" data-sector="${esc(s.sector)}">
-      <div class="wtsec-name">${esc(s.sector)} <span class="na">(${inCount}/${tot})</span></div>
-      <div class="wtsec-bar"><span class="wtsec-fill" style="width:${(s.w / maxW) * 100}%"></span></div>
-      <div class="wtsec-w">${wpct(s.w)}</div></div>`;
+  $("wtSecChips").innerHTML = Object.keys(cnt).sort((a, b) => mc[b] - mc[a]).map((s) => {
+    const k = inb[s] || 0, st = k === 0 ? "" : k === cnt[s] ? " on" : " some";
+    return `<button class="wtchip${st}" data-sector="${esc(s)}" title="${k === cnt[s] ? "Remove" : "Add"} all ${cnt[s]} ${esc(s)} names">${esc(s)} <span class="wtchip-n">${k}/${cnt[s]}</span></button>`;
   }).join("");
-  $("wtSectors").querySelectorAll(".wtsec").forEach((el) =>
-    (el.onclick = () => toggleSectorBasket(el.dataset.sector)));
+  $("wtSecChips").querySelectorAll("[data-sector]").forEach((b) =>
+    (b.onclick = () => toggleSectorBasket(b.dataset.sector)));
+
+  const chosen = byW.filter((r) => cur.has(r.ticker));
+  const mcIn = chosen.reduce((a, r) => a + r.market_cap, 0);
+  const SHOW = 30;
+  $("wtChosen").innerHTML = chosen.length
+    ? `<span class="wtsum"><b>${chosen.length}</b> name${chosen.length === 1 ? "" : "s"} · <b>${wpct(total ? mcIn / total : 0, 1)}</b> of the index</span>` +
+      chosen.slice(0, SHOW).map((r) =>
+        `<button class="wtchip on sm" data-rm="${r.ticker}" title="Remove ${r.ticker}">${r.ticker} <span class="x">×</span></button>`).join("") +
+      (chosen.length > SHOW ? `<span class="na">+${chosen.length - SHOW} more</span>` : "")
+    : `<span class="na">Empty. Load a ready-made basket, add a sector, or search for a name.</span>`;
+  $("wtChosen").querySelectorAll("[data-rm]").forEach((b) => (b.onclick = () => toggleBasket(b.dataset.rm)));
+  renderWtSuggest();
+}
+
+function renderWtSuggest() {
+  const q = ($("wtSearch").value || "").trim().toLowerCase();
+  const box = $("wtSuggest");
+  if (!q) { box.innerHTML = ""; return; }
+  const hits = wtByWeight().filter((r) =>
+    r.ticker.toLowerCase().startsWith(q) || (r.name || "").toLowerCase().includes(q)).slice(0, 8);
+  box.innerHTML = hits.length
+    ? hits.map((r) => {
+        const on = State.basket.has(r.ticker);
+        return `<button class="wtchip${on ? " on" : ""} sm" data-tk="${r.ticker}">${on ? "✓" : "+"} ${r.ticker} <span class="wtchip-n">${esc(r.name)}</span></button>`;
+      }).join("")
+    : `<span class="na">No match.</span>`;
+  box.querySelectorAll("[data-tk]").forEach((b) => (b.onclick = () => toggleBasket(b.dataset.tk)));
+}
+
+function wtSegs(id, cur, opts) {
+  $(id).innerHTML = opts.map(([v, l]) =>
+    `<button data-v="${v}" class="${v === cur ? "on" : ""}">${l}</button>`).join("");
+}
+
+function renderWtSectors(over) {
+  const then = wtIndexAt(over), now = wtIndexAt("now");
+  const secs = Object.keys(now.sec).sort((a, b) => now.sec[b] - now.sec[a]);
+  $("wtSecTitle").textContent = `Sector weights · ${over} ago → now`;
+  wtSegs("wtSecView", State.wtSecView, [["bars", "Bars"], ["lines", "Lines"]]);
+  if (State.wtSecView === "lines") {
+    const points = wtTimeline(over), at = points.map((p) => wtIndexAt(p).sec);
+    const colored = secs.slice(0, SERIES.length);   // the three biggest sectors today
+    const series = secs.map((s) => ({
+      name: s, values: at.map((m) => (m[s] == null ? null : m[s])),
+      color: SERIES[colored.indexOf(s)], muted: !colored.includes(s),
+    }));
+    $("wtSectors").innerHTML =
+      wtLineChart(points, series, { fmt: (v) => +(v * 100).toFixed(1) + "%", endLabels: true, lo: 0 }) +
+      `<p class="sub2">Share of the index at each point, rebuilt from each name's price then. Hover a point for its value.</p>`;
+    return;
+  }
+  const maxW = Math.max(0.01, ...secs.map((s) => Math.max(now.sec[s] || 0, then.sec[s] || 0)));
+  $("wtSectors").innerHTML =
+    `<div class="wtsec wtsec-head"><div></div><div class="legend" style="margin:0">` +
+    `<span><i style="background:${C.accent}"></i>Now</span><span><i class="tick"></i>${over} ago</span></div>` +
+    `<div class="wtsec-w">Now</div><div class="wtsec-w">Then</div><div class="wtsec-w">Change</div></div>` +
+    secs.map((s) => {
+      const a = now.sec[s] || 0, b = then.sec[s];
+      return `<div class="wtsec" title="${esc(s)}: ${wpct(b)} ${over} ago → ${wpct(a)} now">
+        <div class="wtsec-name">${esc(s)}</div>
+        <div class="wtsec-bar"><span class="wtsec-fill" style="width:${(a / maxW) * 100}%"></span>` +
+        (b != null ? `<span class="wtsec-then" style="left:${(b / maxW) * 100}%"></span>` : "") + `</div>
+        <div class="wtsec-w">${wpct(a)}</div><div class="wtsec-w na">${wpct(b)}</div>
+        <div class="wtsec-w">${wpts(b == null ? null : a - b)}</div></div>`;
+    }).join("");
+}
+
+// Everything the compare card plots: your basket (slot 0) plus each compared
+// ready-made basket in its own colour slot.
+function wtCompareSet(scheme) {
+  const out = [{ key: "mine", name: "Your basket", tickers: State.basket, scheme, color: WT_SERIES[0] }];
+  State.wtCompare.forEach((id, i) => {
+    const b = id && wtBasketById(id);
+    if (b) out.push({ key: id, name: b.label, tickers: new Set(wtBasketTickers(b)),
+                      scheme: b.scheme || scheme, color: WT_SERIES[i + 1], preset: b });
+  });
+  return out;
+}
+
+function renderWtCompare(over, scheme) {
+  const { total } = weightUniverse();
+  const bench = State.base.meta.benchmark_returns || {};
+  const full = State.wtCompare.every((x) => x != null);
+  $("wtCmpPick").innerHTML = WT_BASKETS.map((b) => {
+    const slot = State.wtCompare.indexOf(b.id), on = slot >= 0;
+    const dis = !on && full ? ` disabled title="Remove one to compare another (max ${WT_MAX_COMPARE})"` : ` title="${esc(b.note || wtBasketTickers(b).join(", "))}"`;
+    return `<button class="wtchip sm${on ? " cmp-on" : ""}" data-cmp="${b.id}"${dis}>` +
+      (on ? `<i class="wtdot" style="background:${WT_SERIES[slot + 1]}"></i>` : "+ ") + `${esc(b.label)}</button>`;
+  }).join("");
+  $("wtCmpPick").querySelectorAll("[data-cmp]").forEach((b) => (b.onclick = () => toggleCompare(b.dataset.cmp)));
+  wtSegs("wtCmpView", State.wtCmpView, [["chart", "Chart"], ["table", "All windows"]]);
+
+  const set = wtCompareSet(scheme).filter((x) => x.tickers.size);
+  if (!set.length) {
+    $("wtCompare").innerHTML = `<p class="na">Build a basket above, or pick a ready-made one to compare against SPY.</p>`;
+    return;
+  }
+  const schemeTxt = (x) => (x.scheme === "cap" ? "cap-weighted" : "equal-weighted");
+
+  if (State.wtCmpView === "table") {
+    const head = set.map((x) => `<th class="num"><i class="wtdot" style="background:${x.color}"></i>${esc(x.name)}</th>`).join("");
+    const body = WINDOWS.map((w) => {
+      const cells = set.map((x) => {
+        const r = basketReturn(w, x.scheme, x.tickers), d = r != null && bench[w] != null ? r - bench[w] : null;
+        return `<td class="num">${pct(r)}${d == null ? "" : ` <span class="wtvs ${d >= 0 ? "ret-up" : "ret-down"}">${d >= 0 ? "+" : "−"}${Math.abs(d * 100).toFixed(1)}</span>`}</td>`;
+      }).join("");
+      return `<tr${w === over ? ' class="cur"' : ""}><td class="wcw">${w}</td>${cells}<td class="num">${pct(bench[w])}</td></tr>`;
+    }).join("");
+    $("wtCompare").innerHTML =
+      `<div class="tablewrap"><table class="wtcmp"><thead><tr><th>Window</th>${head}<th class="num">SPY</th></tr></thead><tbody>${body}</tbody></table></div>` +
+      `<p class="sub2">Return over each window; the small number is the gap to SPY in points.</p>`;
+    return;
+  }
+
+  const series = [], rowsHtml = [];
+  set.forEach((x) => {
+    const b = basketPath(over, x.scheme, x.tickers);
+    const mc = State.base.rows.filter((r) => x.tickers.has(r.ticker) && r.market_cap > 0)
+      .reduce((a, r) => a + r.market_cap, 0);
+    const ret = b ? b.levels[b.levels.length - 1] / 100 - 1 : null;
+    const d = ret != null && bench[over] != null ? ret - bench[over] : null;
+    const left = b ? x.tickers.size - b.members.length : 0;
+    if (b) series.push({ name: x.name, values: b.levels, color: x.color });
+    rowsHtml.push(`<tr><td><i class="wtdot" style="background:${x.color}"></i><b>${esc(x.name)}</b>` +
+      `<div class="na wtsmall">${x.tickers.size} names · ${schemeTxt(x)}${left ? ` · ${left} without a price ${over} back, left out` : ""}</div></td>` +
+      `<td class="num">${wpct(total ? mc / total : 0, 1)}</td><td class="num">${pct(ret)}</td>` +
+      `<td class="num">${d == null ? '<span class="na">—</span>' : pct(d)}</td>` +
+      `<td class="num">${x.preset
+        ? (wtSameAsBasket([...x.tickers]) ? '<span class="na">Is your basket</span>' : `<button class="ghost small" data-use="${x.key}">Use as my basket</button>`)
+        : ""}</td></tr>`);
+  });
+  const spy = spyPath(over);
+  if (spy) series.push({ name: "SPY", values: spy, color: C.muted, muted: true });
+  rowsHtml.push(`<tr class="spyrow"><td><i class="wtdot" style="background:${C.muted}"></i><b>SPY</b><div class="na wtsmall">S&amp;P 500 ETF (the benchmark)</div></td>` +
+    `<td class="num">100%</td><td class="num">${pct(bench[over])}</td><td class="num"><span class="na">—</span></td><td></td></tr>`);
+
+  $("wtCompare").innerHTML =
+    wtLineChart(wtTimeline(over), series, { fmt: (v) => "$" + +v.toFixed(1), endLabels: true }) +
+    `<p class="sub2">$100 put into each basket ${over} ago and held to today. Hover a point for its value.</p>` +
+    `<div class="tablewrap"><table class="wtcmp wtcmp-sum"><thead><tr><th>Basket</th><th class="num">Share of index</th>` +
+    `<th class="num">${over} return</th><th class="num">vs SPY</th><th></th></tr></thead><tbody>${rowsHtml.join("")}</tbody></table></div>`;
+  $("wtCompare").querySelectorAll("[data-use]").forEach((b) =>
+    (b.onclick = () => setBasket(wtBasketTickers(wtBasketById(b.dataset.use)))));
 }
 
 function renderWtNames(over) {
-  const { capped, total } = weightUniverse();
-  const q = ($("wtSearch").value || "").trim().toLowerCase();
+  const { capped, total } = weightUniverse(), then = wtIndexAt(over);
   $("wtHead").innerHTML =
     `<th class="star-h"></th><th>Ticker</th><th>Company</th><th>Sector</th>` +
-    `<th class="num">Weight</th><th class="num">Price</th><th class="num">${over}</th>`;
-  let rows = [...capped].sort((a, b) => b.market_cap - a.market_cap);
-  rows = q
-    ? rows.filter((r) => r.ticker.toLowerCase().includes(q) || (r.name || "").toLowerCase().includes(q))
-    : rows.slice(0, 100);
+    `<th class="num">Weight now</th><th class="num">${over} ago</th><th class="num">Change</th>` +
+    `<th class="num">${over} return</th>`;
+  const rows = [...capped].sort((a, b) => b.market_cap - a.market_cap).slice(0, 100);
   const tb = $("wtRows");
   tb.innerHTML = "";
   const frag = document.createDocumentFragment();
   rows.forEach((r) => {
     const on = State.basket.has(r.ticker);
+    const wNow = total ? r.market_cap / total : 0;
+    const v = capAt(r, over), wThen = v != null && then.total ? v / then.total : null;
     const tr = document.createElement("tr");
     tr.dataset.tk = r.ticker;
     if (on) tr.classList.add("inbasket");
     tr.innerHTML =
       `<td class="starcell"><span class="bchk ${on ? "on" : "off"}">${on ? "✓" : "+"}</span></td>` +
       `<td class="tk">${r.ticker}</td><td>${esc(r.name)}</td><td>${esc(r.sector || "")}</td>` +
-      `<td class="num">${wpct(total ? r.market_cap / total : 0)}</td>` +
-      `<td class="num">$${Number(r.price).toFixed(2)}</td>` +
+      `<td class="num">${wpct(wNow)}</td><td class="num na">${wpct(wThen)}</td>` +
+      `<td class="num">${wpts(wThen == null ? null : wNow - wThen)}</td>` +
       `<td class="num">${pct(r.returns[over])}</td>`;
     tr.onclick = () => toggleBasket(r.ticker);
     frag.appendChild(tr);
@@ -645,59 +978,38 @@ function renderWtNames(over) {
 
 function renderWeights() {
   if (!State.base) return;
+  palette();
   const over = State.wtOver, scheme = State.wtScheme;
-  const { rows, capped, total } = weightUniverse();
+  const { capped, total } = weightUniverse();
 
   const hasData = capped.length > 0;
   $("wtEmpty").classList.toggle("hidden", hasData);
   $("wtBody").classList.toggle("hidden", !hasData);
   if (!hasData) { $("wtStatus").textContent = ""; return; }
 
-  // Index totals + concentration.
-  const byW = [...capped].sort((a, b) => b.market_cap - a.market_cap);
-  const share = (n) => byW.slice(0, n).reduce((a, r) => a + r.market_cap, 0) / total;
+  // Index totals + concentration, now vs the start of the window.
+  const now = wtIndexAt("now"), then = wtIndexAt(over);
   $("wtStatus").innerHTML =
     `Index ≈ <b>${money(total)}</b> across ${capped.length} weighted names · ` +
-    `top 10 = <b>${wpct(share(10))}</b> · top 50 = <b>${wpct(share(50))}</b> of the S&P 500. ` +
-    `<span class="na">Approx. weights (full market cap, not float-adjusted).</span>`;
+    `top 10 = <b>${wpct(now.top(10))}</b> <span class="na">(${wpct(then.top(10))} ${over} ago)</span> · ` +
+    `top 50 = <b>${wpct(now.top(50))}</b> <span class="na">(${wpct(then.top(50))})</span>. ` +
+    `<span class="na">Approx. weights: full market cap, not float-adjusted; past weights assume today's share counts and members.</span>`;
 
-  // Basket vs SPY across all windows.
-  const nBasket = rows.filter((r) => State.basket.has(r.ticker)).length;
-  const basketMc = capped.filter((r) => State.basket.has(r.ticker)).reduce((a, r) => a + r.market_cap, 0);
-  const bench = State.base.meta.benchmark_returns || {};
-  if (nBasket) {
-    const body = WINDOWS.map((w) => {
-      const br = basketReturn(w, scheme), sr = bench[w];
-      const diff = br != null && sr != null ? br - sr : null;
-      return `<tr><td class="wcw">${w}</td><td class="num">${pct(br)}</td>` +
-             `<td class="num">${pct(sr)}</td><td class="num">${diff == null ? '<span class="na">—</span>' : pct(diff)}</td></tr>`;
-    }).join("");
-    $("wtCompare").innerHTML =
-      `<table class="wtcmp"><thead><tr><th>Window</th><th class="num">Basket</th>` +
-      `<th class="num">SPY</th><th class="num">Diff</th></tr></thead><tbody>${body}</tbody></table>`;
-  } else {
-    $("wtCompare").innerHTML =
-      `<p class="na">Add names below (or toggle a sector) to build a basket, then see how its return compares to SPY.</p>`;
-  }
-
-  // Coverage.
-  const brOver = nBasket ? basketReturn(over, scheme) : null;
-  const srOver = bench[over];
-  const dOver = brOver != null && srOver != null ? brOver - srOver : null;
-  $("wtCoverage").innerHTML =
-    `<div class="kv"><span class="k">Names in basket</span><span>${nBasket} / ${rows.length}</span></div>` +
-    `<div class="kv"><span class="k">By count</span><span>${wpct(nBasket / rows.length, 1)}</span></div>` +
-    `<div class="kv"><span class="k">By market cap</span><span>${wpct(total ? basketMc / total : 0)}</span></div>` +
-    `<div class="kv"><span class="k">Weighting</span><span>${scheme === "cap" ? "Cap-weighted" : "Equal-weighted"}</span></div>` +
-    `<div class="kv"><span class="k">Over ${over}: basket vs SPY</span><span>${pct(brOver)} vs ${pct(srOver)}</span></div>` +
-    `<div class="kv"><span class="k">Difference</span><span>${dOver == null ? '<span class="na">—</span>' : pct(dOver)}</span></div>` +
-    (nBasket ? `<p class="sub2">${coverageVerdict(nBasket, rows.length, dOver, over)}</p>` : "");
-
+  renderWtPicker();
+  renderWtCompare(over, scheme);
   renderWtSectors(over);
   renderWtNames(over);
 }
 
 // ---------------- Detail view ----------------
+function paintDetailBasket(ticker) {
+  const b = $("detailBasket"), on = State.basket.has(ticker);
+  if (!b) return;
+  b.classList.toggle("on", on);
+  b.textContent = on ? "✓ In your basket" : "+ Add to basket";
+  b.title = "Your basket lives on the Weights tab, where you can chart it against SPY";
+}
+
 async function loadProfile(ticker, force = false) {
   if (!force && State.detailCache[ticker]) return State.detailCache[ticker];
   if (!force) {
@@ -740,12 +1052,15 @@ async function openDetail(ticker) {
     $("detailBody").innerHTML =
       `<a class="back" id="detailBack">← Back to list</a>` +
       `<button id="detailStar" class="watchbtn ${on ? "on" : ""}">${on ? "★ Watching" : "☆ Add to watchlist"}</button>` +
+      `<button id="detailBasket" class="watchbtn"></button>` +
       `<a class="ext pblink" href="/company/${encodeURIComponent(ticker)}" target="_blank" rel="noopener">Open standalone ↗</a>` +
       buildProfileHTML(p);
     const back = $("detailBack");
     if (back) back.onclick = () => switchTab("stocks");
     const star = $("detailStar");
     if (star) star.onclick = () => toggleWatch(ticker);
+    paintDetailBasket(ticker);
+    $("detailBasket").onclick = () => { toggleBasket(ticker); paintDetailBasket(ticker); };
   } catch (e) {
     $("detailBody").innerHTML = `<p class="na">Failed to load ${ticker}: ${e}</p>`;
   }
@@ -1081,17 +1396,20 @@ async function boot() {
   $("wtScheme").addEventListener("change", () => {
     State.wtScheme = $("wtScheme").value; saveFilters(); renderWeights();
   });
-  $("wtTopBtn").addEventListener("click", () => {
-    const n = Math.max(1, Math.min(500, parseInt($("wtTopN").value, 10) || 50));
-    const top = [...weightUniverse().capped].sort((a, b) => b.market_cap - a.market_cap)
-      .slice(0, n).map((r) => r.ticker);
-    setBasket(top);
-  });
-  $("wtReset").addEventListener("click", () => setBasket([]));
-  let wtSearchT;
-  $("wtSearch").addEventListener("input", () => {
-    clearTimeout(wtSearchT);
-    wtSearchT = setTimeout(() => renderWtNames(State.wtOver), 150);
+  [["wtSecView", "wtSecView"], ["wtCmpView", "wtCmpView"]].forEach(([id, key]) =>
+    $(id).addEventListener("click", (e) => {
+      const b = e.target.closest("button[data-v]");
+      if (!b || State[key] === b.dataset.v) return;
+      State[key] = b.dataset.v; saveFilters(); renderWeights();
+    }));
+  $("wtSearch").addEventListener("input", renderWtSuggest);
+  $("wtSearch").addEventListener("keydown", (e) => {
+    if (e.key === "Escape") { $("wtSearch").value = ""; renderWtSuggest(); }
+    if (e.key !== "Enter") return;
+    // Enter only ever adds: the first match not already in the basket.
+    const first = [...$("wtSuggest").querySelectorAll("[data-tk]")]
+      .find((b) => !State.basket.has(b.dataset.tk));
+    if (first) { toggleBasket(first.dataset.tk); $("wtSearch").select(); }
   });
 
   // Tabs.
@@ -1148,6 +1466,7 @@ async function boot() {
     localStorage.setItem("ss-theme", name);
     // Re-render so SVG chart colors pick up the new palette.
     if (State.active === "sectors") renderSectors();
+    else if (State.active === "weights") renderWeights();
     else if (State.active === "detail" && State.detailTicker)
       loadProfile(State.detailTicker).then((p) => {
         $("detailBody").querySelectorAll(".chart, .gauge, .ratingbar").length &&

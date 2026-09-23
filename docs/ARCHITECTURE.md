@@ -63,6 +63,23 @@ Signal Sift/
   (`renderWeights` in `app.js`) computes sector/stock index weights and the basket-vs-SPY
   "replicate the index" math **client-side** from `market_cap`. Weights are a full-market-cap
   approximation of SPY's float-adjusted methodology (imperfect for dual-class names).
+  **Past weights** need no extra data: a name's value at the start of window `w` is
+  `market_cap / (1 + returns[w])` (`capAt`), i.e. today's share count and today's
+  constituents held fixed; a name with no lookback price is simply absent at that point.
+  `wtTimeline(over)` lists the lookbacks inside the window, oldest first, plus `"now"` —
+  the x-axis of both line charts (`wtLineChart`, time-scaled, app.js-only). The basket
+  return is **buy-and-hold from the start of the window** (`basketPath`): cap-weighted
+  holds each name in proportion to its value then, so it compares like-for-like with SPY.
+  (It used to average returns with *today's* caps, which over-weighted the winners.)
+  `basketPath(over, scheme, tickers)` takes any ticker Set, which is what the **Compare
+  baskets** card runs on: your basket (colour slot 0) plus up to three `WT_BASKETS`
+  presets in `State.wtCompare` (a fixed 3-slot array persisted as `ss-wtcompare`, so a
+  basket keeps its colour when a neighbour is removed). Colours are `WT_SERIES` = `SERIES`
+  + `#c98500`, validated as a 4-line set on light and dark surfaces. Presets with a
+  hand-picked `list` are filtered to names in today's screen; `top` / `all` presets are
+  computed from the weights; `scheme` on a preset pins its weighting (the equal-weight
+  index). The detail page's **+ Add to basket** button (`paintDetailBasket`) writes the
+  same `State.basket`.
 - **Routing:** the active view is mirrored into `location.hash` (`#/stocks`,
   `#/watchlist`, `#/sectors`, `#/company/<TICKER>`) by `syncHash()` — called from
   `switchTab()` — so refresh/bookmark/back-forward all work. `applyHash()` routes the

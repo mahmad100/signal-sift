@@ -54,12 +54,17 @@ bottom matter, and why this is a tool for finding the question, not the answer.
   whole set persists across refreshes and is the basis for saved screens.
 - **Sector overview**: median return per GICS sector with a diverging bar chart
   and an up/down count per sector. Click a sector to filter the table to it.
-- **Index-weight visualizer** (Weights tab): see each stock's and sector's
-  approximate share of the S&P 500, then **build a basket** — toggle whole
-  sectors, set "top N by weight", or hand-pick names — and compare its return to
-  SPY across every window, cap- or equal-weighted, with coverage (% of the index
-  by count and by market cap). Answers "how few names replicate the S&P 500's
-  return?" Weights are a full-market-cap approximation (not float-adjusted).
+- **Index-weight visualizer** (Weights tab): each stock's and sector's
+  approximate share of the S&P 500 **and how it has shifted** over the chosen
+  time frame — bars (now vs. then, with the change in points) or a line chart of
+  sector weights across every lookback. Then **build a basket** in one click — a
+  ready-made one (Top 10/25/50/100, Magnificent 7, Chipmakers, Big banks,
+  Equal-weight S&P 500, …), whole sectors, names found by search, or **+ Add to
+  basket** from any stock's detail page — and **compare it graphically**: $100 in
+  your basket against up to three ready-made baskets and SPY on one chart, with
+  each basket's share of the index and its return vs SPY, cap- or equal-weighted.
+  Answers "how few names replicate the S&P 500's return?" Weights are a full-market-cap approximation (not float-adjusted), and
+  past weights hold today's share counts and constituents fixed.
 - **Jump anywhere**: Ctrl-K / `/` command palette to any ticker, keyboard row
   navigation, and deep links (`#/company/NVDA`, `#/weights`) that survive refresh.
 - **Animated intro** when you arrive: a ~1.5s full-screen splash — the ◑ mark spins
