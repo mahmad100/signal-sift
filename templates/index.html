@@ -212,8 +212,28 @@
           <div class="wthead"><div class="wtcmp-pick"><span class="wtpick-k">Compare against</span><div id="wtCmpPick" class="chips"></div></div><div id="wtCmpView" class="seg"></div></div>
           <div id="wtCompare"></div>
         </div>
-        <div class="card"><h3>Top 100 names by index weight — click a row to add / remove it</h3>
-          <div class="tablewrap"><table id="wtGrid"><thead><tr id="wtHead"></tr></thead><tbody id="wtRows"></tbody></table></div>
+        <div class="card spycard"><h3>How would SPY do?</h3>
+          <p class="spyintro">Start from the whole S&amp;P 500, take out a theme, a sector or single names, and see how the index would have done without them, over any stretch of the last five years.</p>
+          <div id="spyLoading" class="na">Loading price history…</div>
+          <div id="spyBody" class="hidden">
+            <div class="spyrange">
+              <div id="spyRangeChips" class="seg"></div>
+              <label class="spydate">From <input type="date" id="spyFrom"></label>
+              <label class="spydate">to <input type="date" id="spyTo"></label>
+            </div>
+            <div class="wtpick">
+              <div class="wtpick-k">Take out a theme</div><div id="spyGroups" class="chips"></div>
+              <div class="wtpick-k">…or a sector</div><div id="spySecs" class="chips"></div>
+              <div class="wtpick-k">Taken out</div><div id="spyOutChips" class="chips"></div>
+            </div>
+            <div id="spyStats" class="spystats"></div>
+            <div id="spyChart"></div>
+            <p class="sub2"><span id="spyNote"></span>
+              <label id="spyAloneWrap" class="spyalone"><input type="checkbox" id="spyAlone"> Also chart what you took out on its own</label></p>
+            <div class="spyfind"><h4>Who drove the index</h4>
+              <input id="spySearch" class="search" placeholder="Find any name to take out or put back…" autocomplete="off"></div>
+            <div id="spyList"></div>
+          </div>
         </div>
       </div>
     </section>

@@ -20,6 +20,11 @@ os.makedirs(DATA_DIR, exist_ok=True)
 # Committed, precomputed screen (refreshed by the GitHub Action). On serverless we
 # serve this instead of doing the slow 500-ticker live pull, so cold starts are fast.
 PRECOMPUTED_SCREEN = os.path.join(BASE_DIR, "data", "precomputed_screen.json")
+# Companion file: a compact price path for every name (weekly for ~5y, daily for
+# the most recent HISTORY_DAILY_DAYS), written by the same run. The Weights tab
+# charts from it; it's fetched separately so the screen payload stays small.
+PRECOMPUTED_HISTORY = os.path.join(BASE_DIR, "data", "precomputed_history.json")
+HISTORY_DAILY_DAYS = 100
 
 # Whether this process may run the slow live screen pull. Off on serverless so a
 # cold start (or a Refresh) never risks the function timeout — it serves precompute.

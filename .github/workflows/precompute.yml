@@ -38,7 +38,7 @@ jobs:
         run: |
           git config user.name "signal-sift-bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/precomputed_screen.json
+          git add data/precomputed_screen.json data/precomputed_history.json
           if git diff --cached --quiet; then
             echo "No change in screen data."
           else

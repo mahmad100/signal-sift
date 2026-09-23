@@ -3,10 +3,13 @@ import datetime as dt
 import json
 import os
 
+import pandas as pd
+
 import config
 from . import cache, marketcaps, prices, universe
 
 _CACHE_KEY = "screen_latest"
+_HISTORY_KEY = "history_latest"
 
 
 def _benchmark_returns(closes):
@@ -26,6 +29,64 @@ def _load_precomputed():
             return json.load(fh)
     except (json.JSONDecodeError, OSError):
         return None
+
+
+def _load_json(path):
+    if not os.path.exists(path):
+        return None
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            return json.load(fh)
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+def _history_payload(closes, tickers, generated_at):
+    """Compact price paths for the Weights charts, from the closes already pulled.
+
+    Each value is that day's close divided by the latest close (1.0 = today), so
+    the client can value any basket at any date as market_cap × value — the same
+    constant-share-count assumption the lookback weights use. Before the recent
+    window: the last trading day of every week and of every month (so month- and
+    year-end ranges start on the right close); daily inside it. 4 significant
+    digits; null before a name's first trade.
+    """
+    ymap = {prices.to_yahoo(t): t for t in list(tickers) + [config.BENCHMARK]}
+    c = closes[[y for y in ymap if y in closes.columns]].sort_index().ffill()
+    if c.empty:
+        return None
+    # Yahoo can hand back more than was asked for; keep the span the windows use.
+    c = c[c.index >= c.index[-1] - dt.timedelta(days=config.HISTORY_LOOKBACK_DAYS)]
+    cutoff = c.index[-1] - dt.timedelta(days=config.HISTORY_DAILY_DAYS)
+    old = c[c.index < cutoff]
+    keep = (old.groupby(old.index.to_period("W-FRI")).tail(1).index
+            .union(old.groupby(old.index.to_period("M")).tail(1).index))
+    h = pd.concat([old.loc[keep], c[c.index >= cutoff]]).dropna(how="all")
+    rel = h.divide(c.iloc[-1])
+    series = {}
+    for ysym, t in ymap.items():
+        if ysym not in rel.columns:
+            continue
+        col = rel[ysym]
+        series[t] = [None if v != v else float(f"{v:.4g}") for v in col.tolist()]
+    return {
+        "generated_at": generated_at,
+        "dates": [d.strftime("%Y-%m-%d") for d in rel.index],
+        "series": series,
+    }
+
+
+def get_history():
+    """Price paths for the Weights charts, or None. Serverless serves the
+    committed file; locally it comes from the last live pull (running one if
+    there's none cached), so it always matches the screen it was built with."""
+    if not config.LIVE_SCREEN:
+        return _load_json(config.PRECOMPUTED_HISTORY)
+    hist = cache.get(_HISTORY_KEY, config.SCREEN_TTL)
+    if hist:
+        return hist
+    run_screen(force=True)
+    return cache.get(_HISTORY_KEY, config.SCREEN_TTL) or _load_json(config.PRECOMPUTED_HISTORY)
 
 
 def _live_screen():
@@ -85,8 +146,16 @@ def _live_screen():
         s = shares_map.get(r["ticker"])
         r["market_cap"] = int(round(s * r["price"])) if s and r["price"] else None
 
+    generated_at = dt.datetime.now().isoformat(timespec="seconds")
+    try:
+        hist = _history_payload(closes, [r["ticker"] for r in rows], generated_at)
+        if hist:
+            cache.set(_HISTORY_KEY, hist)
+    except Exception as exc:  # the charts fall back to lookback points; never fail the screen
+        print(f"history build failed: {exc}")
+
     return {
-        "generated_at": dt.datetime.now().isoformat(timespec="seconds"),
+        "generated_at": generated_at,
         "windows": list(config.WINDOWS.keys()),
         "stall_ceiling": config.DEFAULT_STALL_CEILING,
         "benchmark": config.BENCHMARK,

@@ -63,6 +63,12 @@ bottom matter, and why this is a tool for finding the question, not the answer.
   basket** from any stock's detail page — and **compare it graphically**: $100 in
   your basket against up to three ready-made baskets and SPY on one chart, with
   each basket's share of the index and its return vs SPY, cap- or equal-weighted.
+  **How would SPY do?** starts from the whole index and lets you take out a theme
+  (an "AI trade" list, the Magnificent 7, chipmakers…), a sector or single names,
+  over any date range in the last five years — then shows how the index would have
+  done without them, how much of its gain they supplied, and which names drove it.
+  Charts are drawn from real price history (weekly over 5 years, daily for the
+  last ~3 months); hover any date to read every line at once.
   Answers "how few names replicate the S&P 500's return?" Weights are a full-market-cap approximation (not float-adjusted), and
   past weights hold today's share counts and constituents fixed.
 - **Jump anywhere**: Ctrl-K / `/` command palette to any ticker, keyboard row

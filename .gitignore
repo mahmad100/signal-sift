@@ -5,6 +5,7 @@ data/*.json
 data/*.log
 !data/.gitkeep
 !data/precomputed_screen.json
+!data/precomputed_history.json
 .env
 .vercel
 

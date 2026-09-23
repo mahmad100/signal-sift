@@ -23,6 +23,17 @@ def main():
           f"{payload['evaluated']}/{payload['universe_size']} names, "
           f"generated {payload['generated_at']}")
 
+    # The price paths from the same pull (cached by run_screen). Only written when
+    # they match this screen, so the two committed files never disagree.
+    hist = screener.cache.get(screener._HISTORY_KEY, config.SCREEN_TTL)
+    if hist and hist.get("generated_at") == payload["generated_at"]:
+        with open(config.PRECOMPUTED_HISTORY, "w", encoding="utf-8") as fh:
+            json.dump(hist, fh, separators=(",", ":"))
+        print(f"Wrote {config.PRECOMPUTED_HISTORY}: {len(hist['dates'])} dates, "
+              f"{len(hist['series'])} series")
+    else:
+        print("No matching price history; left the committed file as it was.")
+
 
 if __name__ == "__main__":
     main()

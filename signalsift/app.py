@@ -142,6 +142,15 @@ def api_screen():
     })
 
 
+@app.route("/api/history")
+def api_history():
+    """Price paths for the Weights charts (see screener.get_history)."""
+    hist = screener.get_history()
+    if not hist:
+        return jsonify({"error": "No price history published yet."}), 404
+    return jsonify(hist)
+
+
 @app.route("/api/sectors")
 def api_sectors():
     payload = screener.run_screen(force=request.args.get("refresh") == "1")

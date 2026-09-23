@@ -32,6 +32,7 @@ Signal Sift/
 │   └── app.js                 # the SPA: state, tabs, the spreadsheet table + popover, detail
 └── data/
     ├── precomputed_screen.json   # committed; served on serverless
+    ├── precomputed_history.json  # committed; price paths for the Weights charts
     └── *.json                    # runtime caches (gitignored)
 ```
 
@@ -71,7 +72,27 @@ Signal Sift/
   return is **buy-and-hold from the start of the window** (`basketPath`): cap-weighted
   holds each name in proportion to its value then, so it compares like-for-like with SPY.
   (It used to average returns with *today's* caps, which over-weighted the winners.)
-  `basketPath(over, scheme, tickers)` takes any ticker Set, which is what the **Compare
+  **Charts run on real price paths.** `GET /api/history` (`screener.get_history`) serves
+  `data/precomputed_history.json`: every name + SPY as close ÷ latest close, weekly for ~5y
+  and daily for the last `HISTORY_DAILY_DAYS` (100), 4 significant digits (~1.1 MB, ~350 KB
+  gzipped). It's built from the same `closes` the screen pull already has
+  (`_history_payload`), cached as `history_latest`, and written next to the screen by
+  `scripts/precompute.py` only when the two share a `generated_at`; the Action commits both.
+  The SPA fetches it lazily once per screen (`wtEnsureHistory`). `wtFrame(over)` builds the
+  time axis for a window: the exact lookback point first (from the trailing return, so chart
+  endpoints equal the table returns) and then every history date after it; without history
+  it falls back to the 11 lookback points. `wtTimeChart` draws at the container's pixel width
+  (redrawn on resize) with calendar ticks, end labels, and a crosshair tooltip.
+  **How would SPY do?** (`renderSpyWhatIf` / `spyModel`) replaced the top-100 names table.
+  It rebuilds the index from every name (cap-weighted, bought at the start of the range and
+  held), removes `State.spyOut` (persisted `ss-spyout`), and runs over any history range
+  (`State.spyRange` = `{k}` preset incl. YTD, or `{from,to}` ISO dates, snapped to the
+  nearest history date on or before). A name's contribution is weight-at-start × return,
+  which sums exactly to the index return, so "what you took out" splits the gain with no
+  residual. The history keeps every week's and month's last close before the daily window
+  so calendar ranges start on the right day. The "AI trade" preset is a hand-picked list
+  (labelled "our pick" in its tooltip).
+  `basketPath(over, scheme, tickers, frame)` takes any ticker Set, which is what the **Compare
   baskets** card runs on: your basket (colour slot 0) plus up to three `WT_BASKETS`
   presets in `State.wtCompare` (a fixed 3-slot array persisted as `ss-wtcompare`, so a
   basket keeps its colour when a neighbour is removed). Colours are `WT_SERIES` = `SERIES`
