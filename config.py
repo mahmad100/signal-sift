@@ -50,7 +50,7 @@ GH_REF = "main"
 # rather than failing the detail page.
 SEC_USER_AGENT = os.environ.get(
     "SIGNALSIFT_SEC_UA",
-    "Signal Sift research tool contact@ahmadiresearch.com",
+    "Signal Sift research tool mohammadhadiahmadi2@gmail.com",
 )
 
 # Trailing windows to evaluate, in calendar days. Order = display order.

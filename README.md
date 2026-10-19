@@ -11,7 +11,7 @@ re-rated yet. Signal Sift finds them and points you at the primary sources.
 
 ## Why this exists
 
-Signal Sift is the tooling side of [Ahmadi Research](https://ahmadiresearch.com). The written
+Signal Sift is the tooling side of Ahmadi Research, my personal research project. The written
 work there — decks on private credit, sovereign risk, the AI trade — kept needing the same
 thing before it could start: trailing returns for a few hundred names, lined up against the
 index, with the ones whose price and story had drifted apart pulled out. This is that chore
@@ -32,7 +32,7 @@ misleading, redo it" are mine, and I ran and read what came back. But I'm not go
 authorship of every function in here, and the code shouldn't be read as a portfolio piece of
 hand-written craft.
 
-That's the same split as the [Approach page](https://ahmadiresearch.com/approach.html): AI
+That's the same split I use across my research: AI
 drafts, I underwrite. The honest difference is one of scope. In a paper, every number is
 traced to a primary source before it ships. Here the claim is narrower — **I verified the
 app's behaviour, not every line of its source.** Which is exactly why the caveats at the
