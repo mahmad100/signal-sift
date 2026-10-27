@@ -1,0 +1,91 @@
+"""Central configuration for Signal Sift."""
+import os
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# True on Vercel / AWS Lambda style serverless hosts (read-only fs, short timeouts).
+SERVERLESS = bool(os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"))
+
+# On serverless the deployment filesystem is read-only except /tmp, so the on-disk
+# cache must live there. Locally it stays under the project's data/ folder.
+# Override explicitly with SIGNALSIFT_DATA_DIR.
+if os.environ.get("SIGNALSIFT_DATA_DIR"):
+    DATA_DIR = os.environ["SIGNALSIFT_DATA_DIR"]
+elif SERVERLESS:
+    DATA_DIR = "/tmp/signalsift-data"
+else:
+    DATA_DIR = os.path.join(BASE_DIR, "data")
+os.makedirs(DATA_DIR, exist_ok=True)
+
+# Committed, precomputed screen (refreshed by the GitHub Action). On serverless we
+# serve this instead of doing the slow 500-ticker live pull, so cold starts are fast.
+PRECOMPUTED_SCREEN = os.path.join(BASE_DIR, "data", "precomputed_screen.json")
+# Companion file: a compact price path for every name (weekly for ~5y, daily for
+# the most recent HISTORY_DAILY_DAYS), written by the same run. The Weights tab
+# charts from it; it's fetched separately so the screen payload stays small.
+PRECOMPUTED_HISTORY = os.path.join(BASE_DIR, "data", "precomputed_history.json")
+HISTORY_DAILY_DAYS = 100
+
+# Whether this process may run the slow live screen pull. Off on serverless so a
+# cold start (or a Refresh) never risks the function timeout — it serves precompute.
+LIVE_SCREEN = not SERVERLESS
+
+# On-demand refresh (serverless only). The ~25s live pull for 500 names can't run
+# inside a Vercel request, so the Refresh button asks the same precompute Action
+# the schedule uses to rebuild the screen; its commit redeploys with fresh data.
+# Needs a GitHub token with `actions: write` on the repo — without one, Refresh
+# still serves the latest committed screen, it just can't pull off-schedule.
+GH_REPO = os.environ.get("SIGNALSIFT_GH_REPO", "mahmad100/signal-sift")
+GH_TOKEN = os.environ.get("SIGNALSIFT_GH_TOKEN", "")
+GH_WORKFLOW = "precompute.yml"
+GH_REF = "main"
+
+# SEC identifies API users by User-Agent and enforces it: an agent with no real
+# contact email is refused 403 on *every* request, not merely throttled under
+# load. So the committed default carries a role address on this project's own
+# domain -- never a personal one, since this value both travels to sec.gov in a
+# request header and lives in a public repo. Override with SIGNALSIFT_SEC_UA
+# where a more specific contact is wanted. A refusal here is non-fatal by
+# design: see edgar._load_map, which degrades to an explanatory filings panel
+# rather than failing the detail page.
+SEC_USER_AGENT = os.environ.get(
+    "SIGNALSIFT_SEC_UA",
+    "Signal Sift research tool mohammadhadiahmadi2@gmail.com",
+)
+
+# Trailing windows to evaluate, in calendar days. Order = display order.
+# Signal Sift is a trend radar: short windows catch recent moves, the multi-year
+# windows reveal the long-term trend. All are shown across the whole S&P 500.
+WINDOWS = {
+    "1D": 1,
+    "1W": 7,
+    "1M": 30,
+    "3M": 91,
+    "6M": 182,
+    "9M": 273,
+    "1Y": 365,
+    "2Y": 730,
+    "3Y": 1095,
+    "4Y": 1460,
+    "5Y": 1825,
+}
+
+# Days of daily history to pull so the 5-year window has a lookback price.
+HISTORY_LOOKBACK_DAYS = 1900
+
+# A window counts as "stalled" (not grown) if the trailing return is at or
+# below this ceiling. 0.05 == flat-to-up-5% or worse is considered stalled.
+DEFAULT_STALL_CEILING = 0.05
+
+# Benchmark used to compute relative (excess) return.
+BENCHMARK = "SPY"
+
+# How long cached data stays fresh (seconds). Signal Sift treats these caches
+# like a small database: fast-moving data (prices) expires quickly, while
+# slow-moving fundamentals persist for weeks so a price refresh never re-pulls
+# financial statements that only change once a quarter.
+SCREEN_TTL = 60 * 60 * 6            # 6 hours  — prices / screen
+DETAIL_TTL = 60 * 60 * 24           # 24 hours — profile, news, analysts
+FUNDAMENTALS_TTL = 60 * 60 * 24 * 30  # 30 days — income/cash-flow statements
+LONG_HISTORY_TTL = 60 * 60 * 24 * 3   # 3 days  — 5y price history
+SHARES_TTL = 60 * 60 * 24 * 30        # 30 days — implied share counts (index weights)

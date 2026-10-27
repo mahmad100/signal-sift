@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow, noarchive, nosnippet" />
+  <title>Signal Sift</title>
+  <script>document.documentElement.dataset.theme = localStorage.getItem("ss-theme") || "midnight";</script>
+  <link rel="stylesheet" href="{{ asset('styles.css') }}">
+</head>
+<body>
+  <!-- ============ INTRO SPLASH (greets a fresh arrival in a tab, then clears itself) ============ -->
+  <noscript><style>#ss-intro{display:none!important}</style></noscript>
+  <div id="ss-intro" class="ss-intro" role="presentation" aria-hidden="true">
+    <div class="ss-lockup">
+      <span class="ss-mark" id="ssMark" aria-hidden="true">
+        <svg class="ss-sweep" viewBox="0 0 36 36"><circle class="ss-prog" cx="18" cy="18" r="9"></circle></svg>
+      </span>
+      <h1 class="ss-word"><span id="ssTyped"></span><span class="ss-caret" id="ssCaret" aria-hidden="true"></span></h1>
+    </div>
+    <div class="ss-sub" id="ssSub">
+      <p class="ss-tag">S&amp;P 500 Trend Radar</p>
+    </div>
+  </div>
+  <script>
+    (function () {
+      var overlay = document.getElementById("ss-intro");
+
+      // Once per tab. sessionStorage is per-tab and survives a reload, which is
+      // exactly the line we want: the splash greets a fresh arrival (new tab, a
+      // link, a search result) but stays out of the way on refresh and on the way
+      // back here from /company/<ticker>. This runs before first paint, so a
+      // skipped intro never flashes. If storage is unavailable, it just plays.
+      var seen = false;
+      try {
+        seen = !!sessionStorage.getItem("ss-intro-seen");
+        sessionStorage.setItem("ss-intro-seen", "1");
+      } catch (e) {}
+      if (seen) { overlay.style.display = "none"; return; }
+
+      var reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      var mark = document.getElementById("ssMark");
+      var typed = document.getElementById("ssTyped");
+      var caret = document.getElementById("ssCaret");
+      var sub = document.getElementById("ssSub");
+      var name = "Signal Sift";
+      var HOLD_MS = 160;                      // beat to read the wordmark before it clears itself
+      var timer = null, finished = false, gone = false;
+
+      function reveal() {
+        caret.classList.add("done"); sub.classList.add("on"); finished = true;
+        timer = setTimeout(dismiss, HOLD_MS);  // no button to press — it leaves on its own
+      }
+      function finishAnim() {                 // skip straight to the end
+        if (timer) { clearTimeout(timer); timer = null; }
+        mark.classList.add("load"); typed.textContent = name; reveal();
+      }
+      function dismiss() {
+        if (gone) return;
+        gone = true;
+        if (timer) { clearTimeout(timer); timer = null; }
+        overlay.classList.add("gone");
+        document.removeEventListener("keydown", onKey, true);
+        setTimeout(function () { overlay.style.display = "none"; }, 320);  // matches .ss-intro's fade
+      }
+      function onKey(e) {                      // while the intro is up, it owns the keyboard
+        if (gone) return;
+        if (e.key === "Enter" || e.key === " " || e.key === "Escape") {
+          e.preventDefault(); e.stopPropagation();
+          finished ? dismiss() : finishAnim();
+        } else { e.stopPropagation(); }        // don't leak keys to the app (Ctrl-R still works — no preventDefault)
+      }
+
+      if (reduce) { typed.textContent = name; reveal(); }
+      else {
+        var i = 0;
+        function type() {
+          if (i >= name.length) { timer = setTimeout(reveal, 100); return; }
+          typed.textContent += name[i++];
+          timer = setTimeout(type, name[i - 1] === " " ? 55 : 34 + Math.random() * 12);
+        }
+        setTimeout(function () { mark.classList.add("load"); }, 220);  // ring spins + fills to half
+        timer = setTimeout(type, 780);                                 // then the name types
+      }
+
+      // No visible control, but a click or key still skips ahead for the impatient.
+      overlay.addEventListener("click", function () { finished ? dismiss() : finishAnim(); });
+      document.addEventListener("keydown", onKey, true);
+    })();
+  </script>
+
+  <header class="topbar">
+    <a class="brand" href="#/stocks" title="Back to Individual stocks">
+      <span class="logo">◑</span>
+      <div>
+        <h1>Signal Sift</h1>
+        <p class="tag">S&amp;P 500 growth radar — who's up, who's down, over every timeframe.</p>
+      </div>
+    </a>
+    <div class="topright">
+      <button id="cmdkBtn" class="ghost cmdk-btn" title="Jump to any ticker — also press / or Ctrl-K">
+        <span aria-hidden="true">⌕</span><span>Search ticker…</span><kbd class="cmdk-kbd">Ctrl K</kbd>
+      </button>
+      <label class="themepick">Theme
+        <select id="theme">
+          <option value="midnight">Midnight</option>
+          <option value="carbon">Carbon</option>
+          <option value="light">Daylight</option>
+          <option value="amber">Amber terminal</option>
+          <option value="ocean">Ocean</option>
+        </select>
+      </label>
+      <button id="refresh" class="ghost" title="Re-pull all prices from Yahoo">↻ Refresh data</button>
+      <div class="meta" id="meta"></div>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab active" data-tab="stocks">Individual stocks</button>
+    <button class="tab" data-tab="watchlist" data-tabbtn="watchlist">★ Watchlist <span class="tabcount" id="wlCount">0</span></button>
+    <button class="tab" data-tab="sectors">Sectors</button>
+    <button class="tab" data-tab="weights" data-tabbtn="weights">Weights <span class="tabcount" id="wtCount">0</span></button>
+    <button class="tab hidden" data-tab="detail" id="detailTab">
+      <span id="detailTabName">Detail</span> <span class="tabx" id="detailClose">✕</span>
+    </button>
+  </nav>
+
+  <main>
+    <!-- ============ STOCKS ============ -->
+    <section id="view-stocks" class="view">
+      <div class="hint tablehint">Click any column header to <b>sort</b> or <b>filter</b> it — like a spreadsheet. Every % is a trailing return ending today: <b>1Y</b> means "bought a year ago, held to now".</div>
+      <div id="status-line" class="status"></div>
+      <div class="tablewrap">
+        <table id="grid"><thead><tr id="headRow"></tr></thead><tbody id="rows"></tbody></table>
+      </div>
+    </section>
+
+    <!-- ============ WATCHLIST ============ -->
+    <section id="view-watchlist" class="view hidden">
+      <div class="hint tablehint">★ any stock in the Individual stocks tab or on its detail page to track it here. Click a column header to sort or filter.</div>
+      <div id="wl-status" class="status"></div>
+      <div id="wlEmpty" class="empty hidden">
+        <div class="empty-star">★</div>
+        <p>Your watchlist is empty.</p>
+        <p class="na">Click the ☆ next to any stock to start tracking it — it stays here across refreshes.</p>
+      </div>
+      <div class="tablewrap"><table id="wlGrid"><thead><tr id="wlHead"></tr></thead><tbody id="wlRows"></tbody></table></div>
+    </section>
+
+    <!-- ============ SECTORS ============ -->
+    <section id="view-sectors" class="view hidden">
+      <div class="controls">
+        <label>Median over
+          <select id="secOver">
+            <option value="1D">1 day</option><option value="1W">1 week</option>
+            <option value="1M">1 month</option><option value="3M">3 months</option>
+            <option value="6M">6 months</option><option value="9M">9 months</option>
+            <option value="1Y" selected>1 year</option><option value="2Y">2 years</option>
+            <option value="3Y">3 years</option><option value="4Y">4 years</option>
+            <option value="5Y">5 years</option>
+          </select>
+        </label>
+        <span class="hint">Click a sector to open it in the Individual stocks tab.</span>
+      </div>
+      <div class="card"><h3>Median return by GICS sector</h3><div id="sectorChart"></div></div>
+      <div class="card"><h3>Sector heatmap — median return across windows</h3>
+        <div class="tablewrap"><div id="sectorHeat"></div></div>
+      </div>
+    </section>
+
+    <!-- ============ WEIGHTS ============ -->
+    <section id="view-weights" class="view hidden">
+      <div class="controls">
+        <label>Time frame
+          <select id="wtOver">
+            <option value="1D">1 day</option><option value="1W">1 week</option>
+            <option value="1M">1 month</option><option value="3M">3 months</option>
+            <option value="6M">6 months</option><option value="9M">9 months</option>
+            <option value="1Y" selected>1 year</option><option value="2Y">2 years</option>
+            <option value="3Y">3 years</option><option value="4Y">4 years</option>
+            <option value="5Y">5 years</option>
+          </select>
+        </label>
+        <label>Weighting
+          <select id="wtScheme">
+            <option value="cap" selected>Cap-weighted (mirror SPY)</option>
+            <option value="equal">Equal-weighted</option>
+          </select>
+        </label>
+      </div>
+      <div id="wtStatus" class="status"></div>
+      <div id="wtEmpty" class="empty hidden">
+        <div class="empty-star">⚖</div>
+        <p>Weight data isn't loaded yet.</p>
+        <p class="na">Hit <b>↻ Refresh data</b> to pull approximate market caps for the S&amp;P 500.</p>
+      </div>
+      <div id="wtBody">
+        <div class="card"><h3>Sector weights</h3>
+          <div class="wthead"><span id="wtSecTitle" class="sub2"></span><div id="wtSecView" class="seg"></div></div>
+          <div id="wtSectors"></div>
+        </div>
+        <div class="card"><h3>Build a basket</h3>
+          <div class="wtpick">
+            <div class="wtpick-k">Ready-made</div><div id="wtPresets" class="chips"></div>
+            <div class="wtpick-k">Sectors</div><div id="wtSecChips" class="chips"></div>
+            <div class="wtpick-k">Add a name</div>
+            <div class="wtadd"><input id="wtSearch" class="search" placeholder="Ticker or company…" autocomplete="off"><div id="wtSuggest" class="chips"></div></div>
+            <div class="wtpick-k">In basket</div><div id="wtChosen" class="chips"></div>
+          </div>
+        </div>
+        <div class="card"><h3>Compare baskets</h3>
+          <div class="wthead"><div class="wtcmp-pick"><span class="wtpick-k">Compare against</span><div id="wtCmpPick" class="chips"></div></div><div id="wtCmpView" class="seg"></div></div>
+          <div id="wtCompare"></div>
+        </div>
+        <div class="card spycard"><h3>How would SPY do?</h3>
+          <p class="spyintro">Start from the whole S&amp;P 500, take out a theme, a sector or single names, and see how the index would have done without them, over any stretch of the last five years.</p>
+          <div id="spyLoading" class="na">Loading price history…</div>
+          <div id="spyBody" class="hidden">
+            <div class="spyrange">
+              <div id="spyRangeChips" class="seg"></div>
+              <label class="spydate">From <input type="date" id="spyFrom"></label>
+              <label class="spydate">to <input type="date" id="spyTo"></label>
+            </div>
+            <div class="wtpick">
+              <div class="wtpick-k">Take out a theme</div><div id="spyGroups" class="chips"></div>
+              <div class="wtpick-k">…or a sector</div><div id="spySecs" class="chips"></div>
+              <div class="wtpick-k">Taken out</div><div id="spyOutChips" class="chips"></div>
+            </div>
+            <div id="spyStats" class="spystats"></div>
+            <div id="spyChart"></div>
+            <p class="sub2"><span id="spyNote"></span>
+              <label id="spyAloneWrap" class="spyalone"><input type="checkbox" id="spyAlone"> Also chart what you took out on its own</label></p>
+            <div class="spyfind"><h4>Who drove the index</h4>
+              <input id="spySearch" class="search" placeholder="Find any name to take out or put back…" autocomplete="off"></div>
+            <div id="spyList"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ DETAIL ============ -->
+    <section id="view-detail" class="view hidden">
+      <div id="detailBody"><p class="loading">Select a stock…</p></div>
+    </section>
+  </main>
+
+  <footer class="appfoot">
+    <p class="disclaimer">
+      Signal Sift is a research-idea generator, not investment advice. It points at where to
+      look; the conclusions are yours to draw from the primary sources it links.
+      Data: Yahoo Finance via <code>yfinance</code>, and SEC EDGAR. Index weights are a
+      full-market-cap approximation, not float-adjusted.
+      A learning project, part of Ahmadi Research.
+    </p>
+  </footer>
+
+  <!-- Per-column sort/filter popover (Individual stocks + Watchlist) -->
+  <div id="colpop" class="colpop hidden" role="dialog" aria-label="Column sort and filter"></div>
+
+  <!-- ============ COMMAND PALETTE ============ -->
+  <div id="cmdk" class="cmdk hidden" role="dialog" aria-modal="true" aria-label="Jump to a stock">
+    <div class="cmdk-panel">
+      <div class="cmdk-inputrow">
+        <span class="cmdk-icon" aria-hidden="true">⌕</span>
+        <input id="cmdkInput" class="cmdk-input" type="text" autocomplete="off" spellcheck="false"
+               placeholder="Jump to a ticker or company…">
+        <span class="cmdk-esc">esc</span>
+      </div>
+      <div id="cmdkList" class="cmdk-list"></div>
+      <div class="cmdk-foot">
+        <span><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
+        <span><kbd>↵</kbd> open</span>
+        <span><kbd>★</kbd> click star to watch</span>
+      </div>
+    </div>
+  </div>
+
+  <script src="{{ asset('company.js') }}"></script>
+  <script src="{{ asset('app.js') }}"></script>
+</body>
+</html>
